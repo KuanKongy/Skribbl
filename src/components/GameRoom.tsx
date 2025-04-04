@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import Canvas from './Canvas';
@@ -24,6 +23,13 @@ interface Player {
   hasGuessedCorrectly?: boolean;
 }
 
+interface ChatMessage {
+  id: number;
+  username: string;
+  message: string;
+  type: 'normal' | 'system' | 'correct-guess' | 'emote';
+}
+
 const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [isSelectingWord, setIsSelectingWord] = useState(false);
@@ -35,29 +41,21 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
   const [totalRounds, setTotalRounds] = useState(3);
   const [showWordSelection, setShowWordSelection] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: 1,
+      username: 'System',
+      message: 'Welcome to the game! Guess the word or wait for your turn to draw.',
+      type: 'system',
+    }
+  ]);
   const { toast } = useToast();
 
-  // Request room state on component mount
   useEffect(() => {
     if (!socketService.isConnected()) {
       socketService.connect();
     }
     
-    // Request the current room state
-    setTimeout(() => {
-      socketService.requestRoomState();
-    }, 500);
-  }, [roomCode]);
-
-  // Connect to socket on component mount
-  useEffect(() => {
-    // Ensure we're connected
-    if (!socketService.isConnected()) {
-      socketService.connect();
-    }
-    
-    // Handle room state updates
     const onRoomState = (data: any) => {
       console.log('Room state in GameRoom:', data);
       setPlayers(data.players);
@@ -110,7 +108,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     };
     
     const onDrawingUpdated = (data: any) => {
-      // Handle receiving drawing updates from other players
       const canvas = document.querySelector('canvas');
       if (canvas) {
         const ctx = canvas.getContext('2d');
@@ -142,7 +139,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       setCurrentRound(data.currentRound);
       setCurrentWord(null);
       
-      // Update player drawing status
       setPlayers(prevPlayers => {
         return prevPlayers.map(player => ({
           ...player,
@@ -163,7 +159,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
         description: `${data.username} guessed the word!`
       });
       
-      // Update player score
       setPlayers(prev => 
         prev.map(p => 
           p.id === data.playerId 
@@ -193,12 +188,17 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     };
     
     const onNewMessage = (data: any) => {
-      setMessages(prev => [...prev, data]);
+      const newMessage: ChatMessage = {
+        id: messages.length + 1,
+        username: data.username || 'Unknown',
+        message: data.message || '',
+        type: data.type || 'normal'
+      };
+      setMessages(prev => [...prev, newMessage]);
     };
     
     const onPlayerJoined = (data: any) => {
       setPlayers(prev => {
-        // Avoid duplicate players
         if (prev.some(p => p.id === data.player.id)) return prev;
         return [...prev, data.player];
       });
@@ -225,7 +225,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       });
     };
     
-    // Register all listeners
     socketService.on('room-state', onRoomState);
     socketService.on('game-started', onGameStarted);
     socketService.on('select-word', onSelectWord);
@@ -243,7 +242,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     socketService.on('player-left', onPlayerLeft);
     socketService.on('error', onError);
     
-    // Cleanup function to remove all listeners
     return () => {
       socketService.off('room-state', onRoomState);
       socketService.off('game-started', onGameStarted);
@@ -262,36 +260,30 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       socketService.off('player-left', onPlayerLeft);
       socketService.off('error', onError);
     };
-  }, [roomCode, toast, totalRounds]);
+  }, [roomCode, toast, totalRounds, messages.length]);
 
-  // Helper function to get player name by ID
   const getPlayerNameById = (id: string) => {
     return players.find(p => p.id === id)?.username || 'Unknown';
   };
 
-  // Handle word selection
   const handleWordSelect = (word: string) => {
     setCurrentWord(word);
     setShowWordSelection(false);
     socketService.selectWord(roomCode, word);
   };
 
-  // Start the game
   const startGame = () => {
     socketService.startGame(roomCode);
   };
 
-  // Handle guess submission
   const handleGuess = (guess: string) => {
     socketService.sendChatMessage(roomCode, guess);
   };
 
-  // Handle drawing updates
   const handleDrawingUpdate = (imageData: string) => {
     socketService.sendDrawingUpdate(roomCode, imageData);
   };
 
-  // Handle leaving room
   const handleLeaveRoom = () => {
     socketService.disconnect();
     onLeaveRoom();
@@ -321,7 +313,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       {isGameActive ? (
         <>
           <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-4">
-            {/* Main drawing area - takes 3/4 of the width on large screens */}
             <div className="lg:col-span-3 flex flex-col gap-4">
               <div className="flex items-center justify-center">
                 <CurrentWord word={currentWord || ''} isDrawing={isDrawing} />
@@ -339,7 +330,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
               </div>
             </div>
             
-            {/* Right sidebar */}
             <div className="flex flex-col gap-4">
               <ScoreBoard players={players.map(p => ({
                 id: p.id,

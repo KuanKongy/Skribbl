@@ -16,6 +16,7 @@ interface ChatMessage {
 interface ChatBoxProps {
   currentWord?: string;
   onSendGuess?: (guess: string) => void;
+  messages?: ChatMessage[]; // Add the messages prop to the interface
 }
 
 const emotes = [
@@ -41,17 +42,27 @@ const emotes = [
   { code: ':100:', emoji: '💯' }
 ];
 
-const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 1,
-      username: 'System',
-      message: 'Welcome to the game! Guess the word or wait for your turn to draw.',
-      type: 'system',
-    },
-  ]);
+const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess, messages: externalMessages }) => {
+  // Initialize with default system message if no external messages are provided
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    externalMessages || [
+      {
+        id: 1,
+        username: 'System',
+        message: 'Welcome to the game! Guess the word or wait for your turn to draw.',
+        type: 'system',
+      },
+    ]
+  );
   const [input, setInput] = useState('');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  
+  // Update messages when external messages change
+  useEffect(() => {
+    if (externalMessages) {
+      setMessages(externalMessages);
+    }
+  }, [externalMessages]);
   
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
