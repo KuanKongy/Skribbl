@@ -20,18 +20,18 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({ players }) => {
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
   
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
       <div className="bg-primary p-2 text-white">
         <h3 className="text-sm font-semibold">Players</h3>
       </div>
       
-      <div className="divide-y">
+      <div className="divide-y dark:divide-gray-700">
         {sortedPlayers.map((player, index) => (
           <div
             key={player.id}
             className={`flex items-center justify-between p-2 ${
-              player.isDrawing ? 'bg-blue-50' : ''
-            } ${player.hasGuessedCorrectly ? 'bg-green-50' : ''}`}
+              player.isDrawing ? 'bg-blue-50 dark:bg-blue-900/30' : ''
+            } ${player.hasGuessedCorrectly ? 'bg-green-50 dark:bg-green-900/30' : ''}`}
           >
             <div className="flex items-center space-x-2">
               <div className="relative">
@@ -45,7 +45,7 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({ players }) => {
                   </span>
                 )}
                 <div
-                  className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm overflow-hidden"
+                  className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm overflow-hidden"
                 >
                   {player.avatar ? (
                     <img
@@ -54,21 +54,21 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({ players }) => {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <span>{player.username.charAt(0).toUpperCase()}</span>
+                    <span className="dark:text-white">{player.username.charAt(0).toUpperCase()}</span>
                   )}
                 </div>
               </div>
               <div>
-                <p className="text-sm font-medium">
+                <p className="text-sm font-medium dark:text-white">
                   {player.username}
                   {player.isDrawing && (
-                    <span className="ml-1 text-xs text-blue-500">(drawing)</span>
+                    <span className="ml-1 text-xs text-blue-500 dark:text-blue-300">(drawing)</span>
                   )}
                 </p>
               </div>
             </div>
             <div>
-              <span className="text-sm font-bold">{player.score}</span>
+              <span className="text-sm font-bold dark:text-white">{player.score}</span>
             </div>
           </div>
         ))}

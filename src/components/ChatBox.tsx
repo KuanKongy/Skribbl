@@ -131,7 +131,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess, messages: e
   };
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg shadow-md overflow-hidden">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
       <div className="bg-primary p-2 text-white">
         <h3 className="text-sm font-semibold">Chat</h3>
       </div>
@@ -143,12 +143,12 @@ const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess, messages: e
               key={msg.id}
               className={`py-1 px-2 rounded-lg text-sm ${
                 msg.type === 'system'
-                  ? 'bg-secondary text-secondary-foreground italic'
+                  ? 'bg-secondary text-secondary-foreground italic dark:bg-blue-900 dark:text-blue-100'
                   : msg.type === 'correct-guess'
-                  ? 'bg-green-100 text-green-800'
+                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100'
                   : msg.type === 'emote'
                   ? 'text-center'
-                  : 'bg-gray-100'
+                  : 'bg-gray-100 dark:bg-gray-700 dark:text-gray-100'
               }`}
             >
               {msg.type !== 'emote' && <span className="font-bold">{msg.username}: </span>}
@@ -158,25 +158,25 @@ const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess, messages: e
         </div>
       </ScrollArea>
       
-      <div className="border-t p-2 flex items-center">
+      <div className="border-t dark:border-gray-700 p-2 flex items-center">
         <Popover>
           <PopoverTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="text-gray-500 hover:text-primary"
+              className="text-gray-500 hover:text-primary dark:text-gray-400 dark:hover:text-primary"
               title="Emotes"
             >
               <SmilePlus className="h-5 w-5" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-64 p-2">
+          <PopoverContent className="w-64 p-2 dark:bg-gray-800 dark:border-gray-700">
             <div className="grid grid-cols-5 gap-2">
               {emotes.map((emote) => (
                 <button
                   key={emote.code}
                   onClick={() => handleEmoteClick(emote.emoji)}
-                  className="text-xl hover:bg-gray-100 p-1 rounded"
+                  className="text-xl hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded"
                   title={emote.code}
                 >
                   {emote.emoji}
@@ -186,7 +186,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess, messages: e
           </PopoverContent>
         </Popover>
         <Input
-          className="flex-1 mx-1"
+          className="flex-1 mx-1 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
           placeholder="Type your guess..."
           value={input}
           onChange={(e) => setInput(e.target.value)}

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import Canvas from './Canvas';
@@ -6,7 +7,7 @@ import ScoreBoard from './ScoreBoard';
 import WordSelection from './WordSelection';
 import GameTimer from './GameTimer';
 import CurrentWord from './CurrentWord';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Moon, Sun } from 'lucide-react';
 import socketService from '../services/socket';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -49,6 +50,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       type: 'system',
     }
   ]);
+  const [isHost, setIsHost] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -56,12 +58,27 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       socketService.connect();
     }
     
+    // Check if the current player is the host
+    const checkIfHost = () => {
+      const currentId = socketService.getSocketId();
+      const roomState = socketService.getRoomState();
+      if (roomState && roomState.hostId === currentId) {
+        setIsHost(true);
+      }
+    };
+    
     const onRoomState = (data: any) => {
       console.log('Room state in GameRoom:', data);
       setPlayers(data.players);
       setIsGameActive(data.gameActive);
       if (data.currentRound) setCurrentRound(data.currentRound);
       if (data.totalRounds) setTotalRounds(data.totalRounds);
+      
+      // Set host status based on hostId from room state
+      const currentId = socketService.getSocketId();
+      if (data.hostId === currentId) {
+        setIsHost(true);
+      }
     };
     
     const onGameStarted = (data: any) => {
@@ -225,6 +242,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       });
     };
     
+    checkIfHost();
     socketService.on('room-state', onRoomState);
     socketService.on('game-started', onGameStarted);
     socketService.on('select-word', onSelectWord);
@@ -290,7 +308,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
   };
 
   return (
-    <div className="container mx-auto p-4 flex flex-col h-screen">
+    <div className="container mx-auto p-4 flex flex-col h-screen dark:bg-gray-900 dark:text-white">
       <div className="flex justify-between items-center mb-4">
         <Button 
           variant="ghost" 
@@ -302,7 +320,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
         </Button>
         <div>
           <span className="font-semibold text-sm">Room: </span>
-          <span className="bg-white px-2 py-1 rounded text-sm">{roomCode}</span>
+          <span className="bg-white dark:bg-gray-800 px-2 py-1 rounded text-sm">{roomCode}</span>
         </div>
         <div className="flex items-center">
           <span className="mr-2 text-sm">Round {currentRound}/{totalRounds}</span>
@@ -313,6 +331,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       {isGameActive ? (
         <>
           <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-4">
+            {/* Main drawing area */}
             <div className="lg:col-span-3 flex flex-col gap-4">
               <div className="flex items-center justify-center">
                 <CurrentWord word={currentWord || ''} isDrawing={isDrawing} />
@@ -327,10 +346,18 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                     timeLeft={timeLeft}
                   />
                 )}
+                
+                {/* Replace the blocking full-page message with a non-intrusive banner */}
+                {!isDrawing && isGameActive && !isSelectingWord && !currentWord && (
+                  <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-primary text-white px-4 py-2 rounded-full shadow-lg z-10 text-sm font-medium animate-bounce">
+                    Waiting for your turn...
+                  </div>
+                )}
               </div>
             </div>
             
-            <div className="flex flex-col gap-4">
+            {/* Sidebar with Scoreboard and Chat */}
+            <div className="flex flex-col gap-4 lg:block hidden">
               <ScoreBoard players={players.map(p => ({
                 id: p.id,
                 username: p.username,
@@ -348,10 +375,37 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
               </div>
             </div>
           </div>
+          
+          {/* Mobile scoreboard toggle - shows below the canvas on smaller screens */}
+          <div className="lg:hidden mt-4">
+            <details className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+              <summary className="bg-primary text-white p-2 cursor-pointer font-medium">
+                View Players ({players.length})
+              </summary>
+              <div className="p-2">
+                <ScoreBoard players={players.map(p => ({
+                  id: p.id,
+                  username: p.username,
+                  avatar: '',
+                  score: p.score,
+                  isDrawing: p.isDrawing,
+                  hasGuessedCorrectly: p.hasGuessedCorrectly || false,
+                }))} />
+              </div>
+            </details>
+            
+            <div className="mt-2">
+              <ChatBox 
+                currentWord={isDrawing ? currentWord || undefined : undefined}
+                onSendGuess={handleGuess}
+                messages={messages}
+              />
+            </div>
+          </div>
         </>
       ) : (
         <div className="flex-1 flex items-center justify-center">
-          <div className="card-container max-w-md w-full animate-fade-in">
+          <div className="card-container max-w-md w-full animate-fade-in dark:bg-gray-800 dark:text-white">
             <h2 className="text-2xl font-bold mb-4 blue-gradient-text text-center">
               {currentRound > totalRounds ? 'Game Over' : 'Ready to Play?'}
             </h2>
@@ -367,9 +421,16 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                       <span className="font-bold">{player.score}</span>
                     </p>
                   ))}
-                <Button onClick={startGame} className="mt-6">
-                  Play Again
-                </Button>
+                {isHost && (
+                  <Button onClick={startGame} className="mt-6">
+                    Play Again
+                  </Button>
+                )}
+                {!isHost && (
+                  <p className="mt-6 text-sm text-muted-foreground">
+                    Waiting for host to start a new game...
+                  </p>
+                )}
               </div>
             ) : (
               <>
@@ -379,11 +440,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                 </p>
                 
                 {players.length > 0 && (
-                  <div className="bg-muted rounded-md p-3 mb-4">
+                  <div className="bg-muted rounded-md p-3 mb-4 dark:bg-gray-700">
                     <h3 className="text-sm font-medium mb-2">Players ({players.length})</h3>
                     <div className="space-y-2">
                       {players.map((player) => (
-                        <div key={player.id} className="flex items-center justify-between bg-background rounded px-3 py-2">
+                        <div key={player.id} className="flex items-center justify-between bg-background dark:bg-gray-600 rounded px-3 py-2">
                           <div className="flex items-center">
                             <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground">
                               {player.username.charAt(0).toUpperCase()}
@@ -393,6 +454,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                               {player.id === socketService.getSocketId() && " (You)"}
                             </span>
                           </div>
+                          {player.id === socketService.getRoomState()?.hostId && (
+                            <span className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100 px-2 py-0.5 rounded-full">
+                              Host
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -400,7 +466,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                 )}
                 
                 <div className="text-center">
-                  <Button onClick={startGame} className="mt-2">Start Game</Button>
+                  {isHost ? (
+                    <Button onClick={startGame} className="mt-2">Start Game</Button>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Waiting for the host to start the game...</p>
+                  )}
                 </div>
               </>
             )}

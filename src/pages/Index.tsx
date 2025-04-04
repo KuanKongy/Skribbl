@@ -4,10 +4,12 @@ import LobbyRoom from '../components/LobbyRoom';
 import GameRoom from '../components/GameRoom';
 import socketService from '../services/socket';
 import { useToast } from '@/components/ui/use-toast';
+import { useTheme } from '@/hooks/use-theme';
 
 const Index = () => {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const { toast } = useToast();
+  const { theme } = useTheme();
   
   // Initialize socket connection once on component mount
   useEffect(() => {
@@ -59,7 +61,7 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className={`min-h-screen flex flex-col ${theme === 'dark' ? 'dark' : ''}`}>
       {roomCode ? (
         <GameRoom roomCode={roomCode} onLeaveRoom={handleLeaveRoom} />
       ) : (

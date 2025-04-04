@@ -7,11 +7,22 @@ const SOCKET_URL = 'http://localhost:3001';
 // Define a more specific callback type to match Socket.IO's expectations
 type SocketCallback = (...args: any[]) => void;
 
+// Room state interface
+interface RoomState {
+  roomId: string;
+  hostId: string;
+  gameActive: boolean;
+  players: any[];
+  currentRound?: number;
+  totalRounds?: number;
+}
+
 class SocketService {
   private socket: Socket | null = null;
   private listeners: Map<string, SocketCallback[]> = new Map();
   private currentRoomId: string | null = null;
   private currentPlayerId: string | null = null;
+  private roomState: RoomState | null = null;
 
   // Connect to the WebSocket server
   connect() {
@@ -26,6 +37,11 @@ class SocketService {
     
     this.socket.on('connect_error', (err) => {
       console.error('Connection error:', err.message);
+    });
+    
+    // Listen for room state updates
+    this.socket.on('room-state', (data) => {
+      this.roomState = data;
     });
     
     // Set up all registered event listeners
@@ -44,6 +60,7 @@ class SocketService {
     this.socket = null;
     this.currentRoomId = null;
     this.currentPlayerId = null;
+    this.roomState = null;
     console.log('Disconnected from server');
   }
 
@@ -60,6 +77,16 @@ class SocketService {
   // Get current room ID
   getCurrentRoomId() {
     return this.currentRoomId;
+  }
+  
+  // Get current room state
+  getRoomState() {
+    return this.roomState;
+  }
+  
+  // Check if current player is host
+  isHost() {
+    return this.roomState?.hostId === this.getSocketId();
   }
 
   // Send an event to the server
@@ -121,7 +148,7 @@ class SocketService {
     this.emit('create-room', { username });
     
     // Set up a one-time listener for room creation confirmation
-    this.socket.once('room-created', (data: { roomId: string }) => {
+    this.socket.once('room-created', (data: { roomId: string, hostId: string }) => {
       console.log('Room created with ID:', data.roomId);
       this.currentRoomId = data.roomId;
     });

@@ -34,9 +34,39 @@
     --ring: 199 89% 48%;
 
     --radius: 0.75rem;
-
-    font-family: 'Nunito', sans-serif;
   }
+  
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 199 89% 48%; 
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 224.3 76.3% 48%;
+  }
+
+  font-family: 'Nunito', sans-serif;
 }
 
 @layer base {
@@ -48,6 +78,10 @@
     @apply bg-gradient-to-br from-game-blue-light to-game-blue-dark min-h-screen text-foreground;
   }
   
+  .dark body {
+    @apply bg-gradient-to-br from-blue-950 to-game-blue-dark;
+  }
+  
   #root {
     @apply min-h-screen;
   }
@@ -56,13 +90,24 @@
     @apply bg-white bg-opacity-95 backdrop-blur-sm rounded-xl shadow-lg p-6;
   }
   
+  .dark .card-container {
+    @apply bg-gray-800 bg-opacity-95 text-white;
+  }
+  
   .blue-gradient-text {
     @apply bg-gradient-to-r from-game-blue to-game-blue-dark text-transparent bg-clip-text;
   }
   
+  .dark .blue-gradient-text {
+    @apply bg-gradient-to-r from-blue-400 to-game-blue text-transparent bg-clip-text;
+  }
+  
   .canvas-container {
     @apply bg-white rounded-lg shadow-md;
-    touch-action: none;
+  }
+  
+  .dark .canvas-container {
+    @apply bg-gray-800 border border-gray-700;
   }
 }
 

@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, User, Clock, MessageCircle, Play } from 'lucide-react';
+import { Users, User, Clock, MessageCircle, Play, Moon, Sun } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import socketService from '../services/socket';
 import { useToast } from '@/components/ui/use-toast';
+import { useTheme } from '@/hooks/use-theme';
 
 interface Player {
   id: string;
@@ -30,16 +31,17 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
   const [waiting, setWaiting] = useState(false);
   const [isHost, setIsHost] = useState(false);
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
   
   useEffect(() => {
     if (!socketService.isConnected()) {
       socketService.connect();
     }
     
-    const handleRoomCreated = (data: { roomId: string, playerId: string }) => {
+    const handleRoomCreated = (data: { roomId: string, playerId: string, hostId: string }) => {
       console.log('Room created:', data);
       setWaiting(true);
-      setIsHost(true);
+      setIsHost(data.hostId === socketService.getSocketId());
       socketService.requestRoomState();
       toast({
         title: 'Room Created',
@@ -47,10 +49,11 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
       });
     };
     
-    const handleRoomJoined = (data: { roomId: string, players: Player[] }) => {
+    const handleRoomJoined = (data: { roomId: string, players: Player[], hostId: string }) => {
       console.log('Room joined:', data);
       setWaiting(true);
       setPlayers(data.players);
+      setIsHost(data.hostId === socketService.getSocketId());
       toast({
         title: 'Room Joined',
         description: `Successfully joined room ${data.roomId}`,
@@ -75,9 +78,10 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
       });
     };
     
-    const handleRoomState = (data: { players: Player[], roomId: string }) => {
+    const handleRoomState = (data: { players: Player[], roomId: string, hostId: string }) => {
       console.log('Room state update:', data);
       setPlayers(data.players);
+      setIsHost(data.hostId === socketService.getSocketId());
     };
     
     const handleGameStarted = (data: any) => {
@@ -169,34 +173,48 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
     socketService.connect();
   };
 
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
   if (waiting) {
     const roomId = socketService.getCurrentRoomId();
     return (
-      <div className="container mx-auto flex items-center justify-center min-h-screen p-4">
-        <Card className="w-full max-w-md animate-fade-in">
+      <div className="container mx-auto flex items-center justify-center min-h-screen p-4 dark:bg-gray-900 dark:text-white">
+        <Card className="w-full max-w-md animate-fade-in dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
             <div className="flex items-center justify-between mb-4">
               <h1 className="text-3xl font-bold blue-gradient-text">Waiting Room</h1>
-              <div className="bg-primary-foreground px-3 py-1 rounded text-sm">
-                Code: <span className="font-bold">{roomId}</span>
+              <div className="flex items-center space-x-2">
+                <div className="bg-primary-foreground dark:bg-gray-700 px-3 py-1 rounded text-sm">
+                  Code: <span className="font-bold">{roomId}</span>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  onClick={toggleTheme} 
+                  className="h-8 w-8"
+                >
+                  {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                </Button>
               </div>
             </div>
-            <CardDescription>
+            <CardDescription className="dark:text-gray-300">
               Waiting for players to join...
             </CardDescription>
           </CardHeader>
           
           <CardContent>
-            <div className="bg-muted rounded-md p-3 mb-4">
+            <div className="bg-muted dark:bg-gray-700 rounded-md p-3 mb-4">
               <h3 className="text-sm font-medium mb-2 flex items-center">
                 <Users className="h-4 w-4 mr-1" /> Players ({players.length})
               </h3>
               <div className="space-y-2">
                 {players.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No players have joined yet</p>
+                  <p className="text-sm text-muted-foreground dark:text-gray-400">No players have joined yet</p>
                 )}
                 {players.map((player) => (
-                  <div key={player.id} className="flex items-center justify-between bg-background rounded px-3 py-2">
+                  <div key={player.id} className="flex items-center justify-between bg-background dark:bg-gray-600 rounded px-3 py-2">
                     <div className="flex items-center">
                       <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground">
                         {player.username.charAt(0).toUpperCase()}
@@ -207,7 +225,7 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
                       </span>
                     </div>
                     {isHost && player.id === socketService.getSocketId() && (
-                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Host</span>
+                      <span className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100 px-2 py-0.5 rounded-full">Host</span>
                     )}
                   </div>
                 ))}
@@ -216,7 +234,7 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
           </CardContent>
           
           <CardFooter className="flex justify-between">
-            <Button variant="outline" onClick={handleLeaveWaiting}>
+            <Button variant="outline" onClick={handleLeaveWaiting} className="dark:border-gray-600 dark:text-gray-300">
               Leave Room
             </Button>
             {isHost && (
@@ -229,7 +247,7 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
               </Button>
             )}
             {!isHost && (
-              <div className="text-sm text-muted-foreground">
+              <div className="text-sm text-muted-foreground dark:text-gray-400">
                 Waiting for host to start the game...
               </div>
             )}
@@ -240,26 +258,35 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
   }
 
   return (
-    <div className="container mx-auto flex items-center justify-center min-h-screen p-4">
-      <Card className="w-full max-w-md animate-fade-in">
+    <div className="container mx-auto flex items-center justify-center min-h-screen p-4 dark:bg-gray-900 dark:text-white">
+      <Card className="w-full max-w-md animate-fade-in dark:bg-gray-800 dark:border-gray-700">
         <CardHeader>
           <div className="flex items-center justify-center mb-4">
             <h1 className="text-3xl font-bold blue-gradient-text">Sketch & Guess</h1>
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={toggleTheme} 
+              className="h-8 w-8 ml-2"
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
           </div>
-          <CardDescription className="text-center">
+          <CardDescription className="text-center dark:text-gray-300">
             Draw, guess, and have fun with friends!
           </CardDescription>
         </CardHeader>
         
         <CardContent>
           <div className="mb-4">
-            <label className="block text-sm font-medium mb-1">Your Username</label>
+            <label className="block text-sm font-medium mb-1 dark:text-gray-300">Your Username</label>
             <div className="flex items-center">
-              <User className="h-5 w-5 mr-2 text-muted-foreground" />
+              <User className="h-5 w-5 mr-2 text-muted-foreground dark:text-gray-400" />
               <Input
                 placeholder="Enter your username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                className="dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               />
             </div>
           </div>
@@ -270,20 +297,20 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
             className="w-full"
           >
             <TabsList className="grid grid-cols-2 mb-4">
-              <TabsTrigger value="join">Join Room</TabsTrigger>
-              <TabsTrigger value="create">Create Room</TabsTrigger>
+              <TabsTrigger value="join" className="dark:data-[state=active]:bg-primary dark:text-gray-300">Join Room</TabsTrigger>
+              <TabsTrigger value="create" className="dark:data-[state=active]:bg-primary dark:text-gray-300">Create Room</TabsTrigger>
             </TabsList>
             
             <TabsContent value="join">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Room Code</label>
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">Room Code</label>
                   <Input
                     placeholder="Enter room code"
                     value={roomCode}
                     onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                     maxLength={6}
-                    className="uppercase"
+                    className="uppercase dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   />
                 </div>
               </div>
@@ -293,11 +320,11 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
               <div className="space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-sm font-medium">Rounds</label>
-                    <span className="text-sm font-bold">{rounds}</span>
+                    <label className="text-sm font-medium dark:text-gray-300">Rounds</label>
+                    <span className="text-sm font-bold dark:text-gray-300">{rounds}</span>
                   </div>
                   <div className="flex items-center">
-                    <Users className="h-5 w-5 mr-2 text-muted-foreground" />
+                    <Users className="h-5 w-5 mr-2 text-muted-foreground dark:text-gray-400" />
                     <Slider
                       value={[rounds]}
                       min={1}
@@ -311,11 +338,11 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
                 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-sm font-medium">Drawing Time (seconds)</label>
-                    <span className="text-sm font-bold">{drawingTime}</span>
+                    <label className="text-sm font-medium dark:text-gray-300">Drawing Time (seconds)</label>
+                    <span className="text-sm font-bold dark:text-gray-300">{drawingTime}</span>
                   </div>
                   <div className="flex items-center">
-                    <Clock className="h-5 w-5 mr-2 text-muted-foreground" />
+                    <Clock className="h-5 w-5 mr-2 text-muted-foreground dark:text-gray-400" />
                     <Slider
                       value={[drawingTime]}
                       min={30}
