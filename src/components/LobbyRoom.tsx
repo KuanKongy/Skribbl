@@ -1,11 +1,12 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, User, Clock, MessageCircle } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
+import socketService from '../services/socket';
+import { useToast } from '@/components/ui/use-toast';
 
 interface LobbyRoomProps {
   onStartGame: (roomCode: string) => void;
@@ -17,40 +18,92 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
   const [activeTab, setActiveTab] = useState('join');
   const [rounds, setRounds] = useState(3);
   const [drawingTime, setDrawingTime] = useState(60);
+  const { toast } = useToast();
   
-  const generateRoomCode = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let result = '';
-    for (let i = 0; i < 6; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
+  useEffect(() => {
+    if (!socketService.isConnected()) {
+      socketService.connect();
     }
-    return result;
-  };
+    
+    const handleRoomCreated = (data: { roomId: string, playerId: string }) => {
+      console.log('Room created:', data);
+      toast({
+        title: 'Room Created',
+        description: `Room code: ${data.roomId}`,
+      });
+      onStartGame(data.roomId);
+    };
+    
+    const handleRoomJoined = (data: { roomId: string }) => {
+      console.log('Room joined:', data);
+      toast({
+        title: 'Room Joined',
+        description: `Successfully joined room ${data.roomId}`,
+      });
+      onStartGame(data.roomId);
+    };
+    
+    const handleError = (data: { message: string }) => {
+      console.error('Socket error:', data.message);
+      toast({
+        title: 'Error',
+        description: data.message,
+        variant: 'destructive',
+      });
+    };
+    
+    socketService.on('room-created', handleRoomCreated);
+    socketService.on('room-joined', handleRoomJoined);
+    socketService.on('error', handleError);
+    
+    return () => {
+      socketService.off('room-created', handleRoomCreated);
+      socketService.off('room-joined', handleRoomJoined);
+      socketService.off('error', handleError);
+    };
+  }, [toast, onStartGame]);
   
   const handleCreateRoom = () => {
     if (!username) {
-      alert('Please enter a username');
+      toast({
+        title: 'Error',
+        description: 'Please enter a username',
+        variant: 'destructive',
+      });
       return;
     }
     
-    const newRoomCode = generateRoomCode();
-    console.log(`Created room: ${newRoomCode}`);
-    onStartGame(newRoomCode);
+    if (!socketService.isConnected()) {
+      socketService.connect();
+    }
+    
+    socketService.createRoom(username);
   };
   
   const handleJoinRoom = () => {
     if (!username) {
-      alert('Please enter a username');
+      toast({
+        title: 'Error',
+        description: 'Please enter a username',
+        variant: 'destructive',
+      });
       return;
     }
     
     if (!roomCode) {
-      alert('Please enter a room code');
+      toast({
+        title: 'Error',
+        description: 'Please enter a room code',
+        variant: 'destructive',
+      });
       return;
     }
     
-    console.log(`Joining room: ${roomCode}`);
-    onStartGame(roomCode);
+    if (!socketService.isConnected()) {
+      socketService.connect();
+    }
+    
+    socketService.joinRoom(roomCode, username);
   };
 
   return (

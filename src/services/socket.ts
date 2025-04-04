@@ -10,6 +10,7 @@ type SocketCallback = (...args: any[]) => void;
 class SocketService {
   private socket: Socket | null = null;
   private listeners: Map<string, SocketCallback[]> = new Map();
+  private currentRoomId: string | null = null;
 
   // Connect to the WebSocket server
   connect() {
@@ -39,6 +40,7 @@ class SocketService {
     
     this.socket.disconnect();
     this.socket = null;
+    this.currentRoomId = null;
     console.log('Disconnected from server');
   }
 
@@ -52,6 +54,11 @@ class SocketService {
     return this.socket?.id || null;
   }
 
+  // Get current room ID
+  getCurrentRoomId() {
+    return this.currentRoomId;
+  }
+
   // Send an event to the server
   emit(event: string, data: any) {
     if (!this.socket) {
@@ -59,6 +66,7 @@ class SocketService {
       return;
     }
     
+    console.log(`Emitting ${event}:`, data);
     this.socket.emit(event, data);
   }
 
@@ -102,16 +110,42 @@ class SocketService {
   
   // Create or join a room
   createRoom(username: string) {
+    if (!this.socket) {
+      console.error('Socket not connected. Call connect() first.');
+      return;
+    }
+    
     this.emit('create-room', { username });
+    
+    // Set up a one-time listener for room creation confirmation
+    this.socket.once('room-created', (data: { roomId: string }) => {
+      console.log('Room created with ID:', data.roomId);
+      this.currentRoomId = data.roomId;
+    });
   }
   
   joinRoom(roomId: string, username: string) {
+    if (!this.socket) {
+      console.error('Socket not connected. Call connect() first.');
+      return;
+    }
+    
     this.emit('join-room', { roomId, username });
+    this.currentRoomId = roomId;
   }
   
   // Start the game
-  startGame(roomId: string) {
-    this.emit('start-game', { roomId });
+  startGame(roomId?: string) {
+    // Use provided roomId or fall back to the stored currentRoomId
+    const actualRoomId = roomId || this.currentRoomId;
+    
+    if (!actualRoomId) {
+      console.error('No room ID available. Create or join a room first.');
+      return;
+    }
+    
+    console.log('Starting game in room:', actualRoomId);
+    this.emit('start-game', { roomId: actualRoomId });
   }
   
   // Select a word (when drawing)
