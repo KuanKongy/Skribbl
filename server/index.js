@@ -50,6 +50,22 @@ function getNextDrawer(room) {
   return { nextIndex, nextDrawerId: players[nextIndex].id };
 }
 
+// Helper function to send room state to all clients in a room
+function broadcastRoomState(roomId) {
+  const room = rooms[roomId];
+  if (!room) return;
+  
+  const roomInfo = {
+    roomId: room.id,
+    players: room.players,
+    gameActive: room.gameActive,
+    currentRound: room.currentRound,
+    totalRounds: room.totalRounds
+  };
+  
+  io.to(roomId).emit('room-state', roomInfo);
+}
+
 // Socket.io events
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
@@ -72,6 +88,10 @@ io.on('connection', (socket) => {
     
     socket.join(roomId);
     socket.emit('room-created', { roomId, playerId: socket.id });
+    
+    // Send initial room state
+    broadcastRoomState(roomId);
+    
     console.log(`Room created: ${roomId} by ${username}`);
   });
   
@@ -84,13 +104,42 @@ io.on('connection', (socket) => {
       return;
     }
     
+    // Check if game is already active
+    if (room.gameActive) {
+      socket.emit('error', { message: 'Game already started' });
+      return;
+    }
+    
+    // Add player to the room
     room.players.push({ id: socket.id, username, score: 0, isDrawing: false });
     socket.join(roomId);
     
-    socket.emit('room-joined', { roomId, players: room.players, playerId: socket.id });
-    socket.to(roomId).emit('player-joined', { player: { id: socket.id, username, score: 0 } });
+    // Notify the new player of successful join with room data
+    socket.emit('room-joined', { 
+      roomId, 
+      players: room.players, 
+      playerId: socket.id 
+    });
+    
+    // Notify everyone else about the new player
+    socket.to(roomId).emit('player-joined', { 
+      player: { id: socket.id, username, score: 0 } 
+    });
+    
+    // Broadcast updated room state to everyone
+    broadcastRoomState(roomId);
     
     console.log(`${username} joined room ${roomId}`);
+  });
+  
+  // Request room state
+  socket.on('request-room-state', ({ roomId }) => {
+    if (!roomId || !rooms[roomId]) {
+      socket.emit('error', { message: 'Room not found' });
+      return;
+    }
+    
+    broadcastRoomState(roomId);
   });
   
   // Start the game
@@ -99,6 +148,13 @@ io.on('connection', (socket) => {
     
     if (!room) {
       socket.emit('error', { message: 'Room not found' });
+      return;
+    }
+    
+    // Make sure the requester is in the room
+    const playerIndex = room.players.findIndex(p => p.id === socket.id);
+    if (playerIndex === -1) {
+      socket.emit('error', { message: 'You are not in this room' });
       return;
     }
     
@@ -167,6 +223,7 @@ io.on('connection', (socket) => {
     if (!room) return;
     
     const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
     
     // Check if this is a correct guess
     const isCorrectGuess = room.currentWord && 
@@ -230,6 +287,10 @@ io.on('connection', (socket) => {
         else if (player.isDrawing && room.gameActive) {
           handleNextTurn(roomId);
         }
+        // Broadcast updated room state to everyone still in the room
+        else {
+          broadcastRoomState(roomId);
+        }
         
         break;
       }
@@ -272,6 +333,12 @@ function handleNextTurn(roomId) {
   const currentDrawerIndex = room.currentDrawerIndex;
   if (currentDrawerIndex !== -1 && room.players[currentDrawerIndex]) {
     room.players[currentDrawerIndex].isDrawing = false;
+  }
+  
+  // Check if we still have players
+  if (room.players.length === 0) {
+    delete rooms[roomId];
+    return;
   }
   
   const { nextIndex, nextDrawerId } = getNextDrawer(room);

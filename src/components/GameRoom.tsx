@@ -38,6 +38,18 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
   const [messages, setMessages] = useState<any[]>([]);
   const { toast } = useToast();
 
+  // Request room state on component mount
+  useEffect(() => {
+    if (!socketService.isConnected()) {
+      socketService.connect();
+    }
+    
+    // Request the current room state
+    setTimeout(() => {
+      socketService.requestRoomState();
+    }, 500);
+  }, [roomCode]);
+
   // Connect to socket on component mount
   useEffect(() => {
     // Ensure we're connected
@@ -45,7 +57,15 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       socketService.connect();
     }
     
-    // Register socket event listeners
+    // Handle room state updates
+    const onRoomState = (data: any) => {
+      console.log('Room state in GameRoom:', data);
+      setPlayers(data.players);
+      setIsGameActive(data.gameActive);
+      if (data.currentRound) setCurrentRound(data.currentRound);
+      if (data.totalRounds) setTotalRounds(data.totalRounds);
+    };
+    
     const onGameStarted = (data: any) => {
       console.log('Game started:', data);
       setIsGameActive(true);
@@ -121,6 +141,16 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       console.log('Next turn:', data);
       setCurrentRound(data.currentRound);
       setCurrentWord(null);
+      
+      // Update player drawing status
+      setPlayers(prevPlayers => {
+        return prevPlayers.map(player => ({
+          ...player,
+          isDrawing: player.username === data.currentDrawer,
+          hasGuessedCorrectly: false
+        }));
+      });
+      
       toast({
         title: `Round ${data.currentRound} of ${data.totalRounds}`,
         description: `${data.currentDrawer} is now drawing.`
@@ -130,7 +160,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     const onPlayerGuessed = (data: any) => {
       toast({
         title: "Correct Guess",
-        description: `${data.username} guessed the word! +${data.score} points`
+        description: `${data.username} guessed the word!`
       });
       
       // Update player score
@@ -167,7 +197,12 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     };
     
     const onPlayerJoined = (data: any) => {
-      setPlayers(prev => [...prev, data.player]);
+      setPlayers(prev => {
+        // Avoid duplicate players
+        if (prev.some(p => p.id === data.player.id)) return prev;
+        return [...prev, data.player];
+      });
+      
       toast({
         title: "Player Joined",
         description: `${data.player.username} has joined the room`
@@ -182,14 +217,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       });
     };
     
-    const onRoomJoined = (data: any) => {
-      setPlayers(data.players);
-      toast({
-        title: "Room Joined",
-        description: `You joined room ${data.roomId}`
-      });
-    };
-    
     const onError = (data: any) => {
       toast({
         title: "Error",
@@ -199,6 +226,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     };
     
     // Register all listeners
+    socketService.on('room-state', onRoomState);
     socketService.on('game-started', onGameStarted);
     socketService.on('select-word', onSelectWord);
     socketService.on('drawing-started', onDrawingStarted);
@@ -213,11 +241,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     socketService.on('new-message', onNewMessage);
     socketService.on('player-joined', onPlayerJoined);
     socketService.on('player-left', onPlayerLeft);
-    socketService.on('room-joined', onRoomJoined);
     socketService.on('error', onError);
     
     // Cleanup function to remove all listeners
     return () => {
+      socketService.off('room-state', onRoomState);
       socketService.off('game-started', onGameStarted);
       socketService.off('select-word', onSelectWord);
       socketService.off('drawing-started', onDrawingStarted);
@@ -232,10 +260,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       socketService.off('new-message', onNewMessage);
       socketService.off('player-joined', onPlayerJoined);
       socketService.off('player-left', onPlayerLeft);
-      socketService.off('room-joined', onRoomJoined);
       socketService.off('error', onError);
     };
-  }, [roomCode, toast]);
+  }, [roomCode, toast, totalRounds]);
 
   // Helper function to get player name by ID
   const getPlayerNameById = (id: string) => {
@@ -326,6 +353,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                 <ChatBox 
                   currentWord={isDrawing ? currentWord || undefined : undefined}
                   onSendGuess={handleGuess}
+                  messages={messages}
                 />
               </div>
             </div>
@@ -355,13 +383,34 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
               </div>
             ) : (
               <>
-                <p className="text-center mb-6">
+                <p className="text-center mb-4">
                   Get ready to draw and guess! Each player takes turns drawing while others try to
                   guess the word.
                 </p>
                 
+                {players.length > 0 && (
+                  <div className="bg-muted rounded-md p-3 mb-4">
+                    <h3 className="text-sm font-medium mb-2">Players ({players.length})</h3>
+                    <div className="space-y-2">
+                      {players.map((player) => (
+                        <div key={player.id} className="flex items-center justify-between bg-background rounded px-3 py-2">
+                          <div className="flex items-center">
+                            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground">
+                              {player.username.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="ml-2 text-sm font-medium">
+                              {player.username}
+                              {player.id === socketService.getSocketId() && " (You)"}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 <div className="text-center">
-                  <Button onClick={startGame}>Start Game</Button>
+                  <Button onClick={startGame} className="mt-2">Start Game</Button>
                 </div>
               </>
             )}

@@ -11,6 +11,7 @@ class SocketService {
   private socket: Socket | null = null;
   private listeners: Map<string, SocketCallback[]> = new Map();
   private currentRoomId: string | null = null;
+  private currentPlayerId: string | null = null;
 
   // Connect to the WebSocket server
   connect() {
@@ -20,6 +21,7 @@ class SocketService {
     
     this.socket.on('connect', () => {
       console.log('Connected to server with ID:', this.socket?.id);
+      this.currentPlayerId = this.socket?.id || null;
     });
     
     this.socket.on('connect_error', (err) => {
@@ -41,6 +43,7 @@ class SocketService {
     this.socket.disconnect();
     this.socket = null;
     this.currentRoomId = null;
+    this.currentPlayerId = null;
     console.log('Disconnected from server');
   }
 
@@ -51,7 +54,7 @@ class SocketService {
   
   // Get socket ID (null if not connected)
   getSocketId() {
-    return this.socket?.id || null;
+    return this.currentPlayerId || this.socket?.id || null;
   }
 
   // Get current room ID
@@ -130,6 +133,7 @@ class SocketService {
       return;
     }
     
+    console.log(`Joining room ${roomId} as ${username}`);
     this.emit('join-room', { roomId, username });
     this.currentRoomId = roomId;
   }
@@ -150,17 +154,41 @@ class SocketService {
   
   // Select a word (when drawing)
   selectWord(roomId: string, word: string) {
-    this.emit('word-selected', { roomId, word });
+    const actualRoomId = roomId || this.currentRoomId;
+    if (!actualRoomId) {
+      console.error('No room ID available for selecting word.');
+      return;
+    }
+    this.emit('word-selected', { roomId: actualRoomId, word });
   }
   
   // Send a drawing update
   sendDrawingUpdate(roomId: string, imageData: string) {
-    this.emit('drawing-update', { roomId, imageData });
+    const actualRoomId = roomId || this.currentRoomId;
+    if (!actualRoomId) {
+      console.error('No room ID available for drawing update.');
+      return;
+    }
+    this.emit('drawing-update', { roomId: actualRoomId, imageData });
   }
   
   // Send a chat message or guess
   sendChatMessage(roomId: string, message: string) {
-    this.emit('chat-message', { roomId, message });
+    const actualRoomId = roomId || this.currentRoomId;
+    if (!actualRoomId) {
+      console.error('No room ID available for chat message.');
+      return;
+    }
+    this.emit('chat-message', { roomId: actualRoomId, message });
+  }
+
+  // Request current room state (players, game status, etc)
+  requestRoomState() {
+    if (!this.currentRoomId) {
+      console.error('No room ID available for requesting state.');
+      return;
+    }
+    this.emit('request-room-state', { roomId: this.currentRoomId });
   }
 }
 

@@ -9,8 +9,8 @@ const Index = () => {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const { toast } = useToast();
   
+  // Initialize socket connection once on component mount
   useEffect(() => {
-    // Connect to socket when component mounts
     if (!socketService.isConnected()) {
       socketService.connect();
       console.log('Socket connected');
@@ -20,10 +20,27 @@ const Index = () => {
     return () => {
       if (socketService.isConnected()) {
         socketService.disconnect();
-        console.log('Socket disconnected');
+        console.log('Socket disconnected on unmount');
       }
     };
   }, []);
+  
+  // Listen for game start events in both lobby and game room
+  useEffect(() => {
+    const handleGameStarted = (data: any) => {
+      console.log('Game started event detected in Index:', data);
+      const currentRoomId = socketService.getCurrentRoomId();
+      if (currentRoomId && !roomCode) {
+        setRoomCode(currentRoomId);
+      }
+    };
+    
+    socketService.on('game-started', handleGameStarted);
+    
+    return () => {
+      socketService.off('game-started', handleGameStarted);
+    };
+  }, [roomCode]);
   
   const handleStartGame = (code: string) => {
     console.log(`Starting game with room code: ${code}`);
