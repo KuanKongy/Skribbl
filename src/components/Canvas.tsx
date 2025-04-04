@@ -1,7 +1,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Palette, Eraser, Trash2, MousePointer2 } from 'lucide-react';
+import { Palette, Eraser, Trash2, MousePointer2, PaintBucket } from 'lucide-react';
 
 interface CanvasProps {
   isDrawing: boolean;
@@ -14,7 +14,7 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
   const [isDrawingEnabled, setIsDrawingEnabled] = useState(false);
   const [color, setColor] = useState('#000000');
   const [brushSize, setBrushSize] = useState(5);
-  const [tool, setTool] = useState<'brush' | 'eraser'>('brush');
+  const [tool, setTool] = useState<'brush' | 'eraser' | 'fill'>('brush');
   
   // Mouse / touch positions
   const [lastPos, setLastPos] = useState({ x: 0, y: 0 });
@@ -59,6 +59,11 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
   const startDrawing = (x: number, y: number) => {
     if (!isDrawingEnabled || !ctx) return;
     
+    if (tool === 'fill') {
+      floodFill(x, y);
+      return;
+    }
+    
     ctx.beginPath();
     ctx.moveTo(x, y);
     setLastPos({ x, y });
@@ -73,7 +78,7 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
   };
 
   const draw = (x: number, y: number) => {
-    if (!isDrawingEnabled || !ctx) return;
+    if (!isDrawingEnabled || !ctx || tool === 'fill') return;
     
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -83,6 +88,86 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
     if (onDrawingUpdate && canvasRef.current) {
       onDrawingUpdate(canvasRef.current.toDataURL());
     }
+  };
+
+  // Flood fill implementation
+  const floodFill = (x: number, y: number) => {
+    if (!isDrawingEnabled || !ctx || !canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    const width = canvas.width;
+    const height = canvas.height;
+    const stack = [{x, y}];
+    
+    // Get the target color (the color at the click point)
+    const targetColorPos = (Math.floor(y) * width + Math.floor(x)) * 4;
+    const targetR = data[targetColorPos];
+    const targetG = data[targetColorPos + 1];
+    const targetB = data[targetColorPos + 2];
+    const targetA = data[targetColorPos + 3];
+    
+    // Parse the fill color
+    const fillColorObj = hexToRgba(color);
+    
+    // Check if target color is already the fill color
+    if (
+      targetR === fillColorObj.r &&
+      targetG === fillColorObj.g &&
+      targetB === fillColorObj.b &&
+      targetA === 255
+    ) {
+      return;
+    }
+    
+    while (stack.length) {
+      const pos = stack.pop()!;
+      const px = Math.floor(pos.x);
+      const py = Math.floor(pos.y);
+      
+      // Check bounds
+      if (px < 0 || px >= width || py < 0 || py >= height) continue;
+      
+      const dataPos = (py * width + px) * 4;
+      
+      // Check if this pixel matches the target color
+      if (
+        data[dataPos] !== targetR ||
+        data[dataPos + 1] !== targetG ||
+        data[dataPos + 2] !== targetB ||
+        data[dataPos + 3] !== targetA
+      ) {
+        continue;
+      }
+      
+      // Set the pixel to the fill color
+      data[dataPos] = fillColorObj.r;
+      data[dataPos + 1] = fillColorObj.g;
+      data[dataPos + 2] = fillColorObj.b;
+      data[dataPos + 3] = 255;
+      
+      // Add neighboring pixels to the stack
+      stack.push({x: px + 1, y: py});
+      stack.push({x: px - 1, y: py});
+      stack.push({x: px, y: py + 1});
+      stack.push({x: px, y: py - 1});
+    }
+    
+    // Put the modified image data back
+    ctx.putImageData(imageData, 0, 0);
+    
+    // If onDrawingUpdate is provided, send the image data
+    if (onDrawingUpdate) {
+      onDrawingUpdate(canvas.toDataURL());
+    }
+  };
+
+  const hexToRgba = (hex: string) => {
+    const r = parseInt(hex.substring(1, 3), 16);
+    const g = parseInt(hex.substring(3, 5), 16);
+    const b = parseInt(hex.substring(5, 7), 16);
+    return { r, g, b, a: 255 };
   };
 
   const clearCanvas = () => {
@@ -146,8 +231,13 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
     draw(x, y);
   };
 
-  // Color options
-  const colorOptions = ['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'];
+  // Color options - expanded with more colors
+  const colorOptions = [
+    '#000000', '#FFFFFF', '#FF0000', '#FF8000', '#FFFF00', 
+    '#80FF00', '#00FF00', '#00FF80', '#00FFFF', '#0080FF', 
+    '#0000FF', '#8000FF', '#FF00FF', '#FF0080', '#964B00',
+    '#808080', '#C0C0C0', '#FFC0CB', '#800000', '#008000'
+  ];
 
   return (
     <div className="flex flex-col w-full h-full gap-2">
@@ -175,6 +265,16 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
           </Button>
           <Button
             size="sm"
+            variant={tool === 'fill' ? 'default' : 'outline'}
+            onClick={() => setTool('fill')}
+            className="flex items-center"
+            title="Fill"
+          >
+            <PaintBucket className="h-4 w-4 mr-1" />
+            <span className="sr-only md:not-sr-only md:inline-block">Fill</span>
+          </Button>
+          <Button
+            size="sm"
             variant="outline"
             onClick={clearCanvas}
             className="flex items-center"
@@ -186,7 +286,7 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
         </div>
         
         {/* Color picker */}
-        <div className="flex items-center space-x-1">
+        <div className="flex flex-wrap items-center gap-1 max-w-[50%]">
           {colorOptions.map((c) => (
             <button
               key={c}

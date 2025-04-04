@@ -1,0 +1,324 @@
+
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const cors = require('cors');
+const { v4: uuidv4 } = require('uuid');
+
+const app = express();
+app.use(cors());
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*', // In production, limit this to your frontend domain
+    methods: ['GET', 'POST']
+  }
+});
+
+// Storage for game rooms
+const rooms = {};
+
+// Words for the game
+const words = [
+  'apple', 'banana', 'cat', 'dog', 'elephant', 'fish', 'guitar', 'house',
+  'island', 'jacket', 'kite', 'lemon', 'mountain', 'notebook', 'orange',
+  'piano', 'queen', 'rabbit', 'sunflower', 'tree', 'umbrella', 'volcano',
+  'watermelon', 'xylophone', 'yacht', 'zebra', 'airplane', 'beach', 'castle',
+  'dragon', 'eagle', 'flower', 'giraffe', 'helicopter', 'igloo', 'jungle',
+  'kangaroo', 'lighthouse', 'moon', 'night', 'octopus', 'penguin', 'queen',
+  'rainbow', 'snake', 'tiger', 'unicorn', 'violin', 'wolf', 'xylophone', 
+  'yellow', 'zombie', 'bicycle', 'camera', 'diamond', 'elephant', 'fireworks'
+];
+
+// Helper function to get random words
+function getRandomWords(count) {
+  const selectedWords = [];
+  const shuffled = [...words].sort(() => 0.5 - Math.random());
+  
+  for (let i = 0; i < count && i < shuffled.length; i++) {
+    selectedWords.push(shuffled[i]);
+  }
+  
+  return selectedWords;
+}
+
+// Helper function to find next player to draw
+function getNextDrawer(room) {
+  const { players, currentDrawerIndex } = room;
+  let nextIndex = (currentDrawerIndex + 1) % players.length;
+  return { nextIndex, nextDrawerId: players[nextIndex].id };
+}
+
+// Socket.io events
+io.on('connection', (socket) => {
+  console.log('A user connected:', socket.id);
+  
+  // Create a new room
+  socket.on('create-room', ({ username }) => {
+    const roomId = uuidv4().substring(0, 6).toUpperCase();
+    
+    rooms[roomId] = {
+      id: roomId,
+      players: [{ id: socket.id, username, score: 0, isDrawing: false }],
+      messages: [],
+      currentWord: null,
+      currentDrawerIndex: -1,
+      currentRound: 0,
+      totalRounds: 3,
+      timeLeft: 60,
+      gameActive: false
+    };
+    
+    socket.join(roomId);
+    socket.emit('room-created', { roomId, playerId: socket.id });
+    console.log(`Room created: ${roomId} by ${username}`);
+  });
+  
+  // Join an existing room
+  socket.on('join-room', ({ roomId, username }) => {
+    const room = rooms[roomId];
+    
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' });
+      return;
+    }
+    
+    room.players.push({ id: socket.id, username, score: 0, isDrawing: false });
+    socket.join(roomId);
+    
+    socket.emit('room-joined', { roomId, players: room.players, playerId: socket.id });
+    socket.to(roomId).emit('player-joined', { player: { id: socket.id, username, score: 0 } });
+    
+    console.log(`${username} joined room ${roomId}`);
+  });
+  
+  // Start the game
+  socket.on('start-game', ({ roomId }) => {
+    const room = rooms[roomId];
+    
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' });
+      return;
+    }
+    
+    room.gameActive = true;
+    room.currentRound = 1;
+    
+    // Select first drawer
+    const drawerIndex = 0;
+    room.currentDrawerIndex = drawerIndex;
+    room.players[drawerIndex].isDrawing = true;
+    
+    // Send word options to first drawer
+    const wordOptions = getRandomWords(3);
+    
+    io.to(room.players[drawerIndex].id).emit('select-word', { words: wordOptions });
+    io.to(roomId).emit('game-started', { 
+      currentRound: room.currentRound,
+      totalRounds: room.totalRounds,
+      currentDrawer: room.players[drawerIndex].username
+    });
+    
+    console.log(`Game started in room ${roomId}`);
+  });
+  
+  // Word selected by drawer
+  socket.on('word-selected', ({ roomId, word }) => {
+    const room = rooms[roomId];
+    
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' });
+      return;
+    }
+    
+    room.currentWord = word;
+    room.timeLeft = 60;
+    
+    // Tell everyone except drawer that drawing has started (but don't reveal the word)
+    socket.to(roomId).emit('drawing-started', { 
+      drawer: socket.id,
+      wordLength: word.length 
+    });
+    
+    // Tell drawer that they can now draw with the word
+    socket.emit('your-turn', { word });
+    
+    // Start the round timer
+    startRoundTimer(roomId);
+    
+    console.log(`Word selected in room ${roomId}: ${word}`);
+  });
+  
+  // Drawing update
+  socket.on('drawing-update', ({ roomId, imageData }) => {
+    const room = rooms[roomId];
+    
+    if (!room || !room.gameActive) return;
+    
+    // Send the drawing update to all other players in the room
+    socket.to(roomId).emit('drawing-updated', { imageData });
+  });
+  
+  // Chat message / guess
+  socket.on('chat-message', ({ roomId, message }) => {
+    const room = rooms[roomId];
+    
+    if (!room) return;
+    
+    const player = room.players.find(p => p.id === socket.id);
+    
+    // Check if this is a correct guess
+    const isCorrectGuess = room.currentWord && 
+                        message.toLowerCase().trim() === room.currentWord.toLowerCase() &&
+                        !player.isDrawing; // Drawer can't guess
+    
+    if (isCorrectGuess) {
+      // Calculate score based on time left
+      const score = Math.floor(room.timeLeft * 10);
+      player.score += score;
+      
+      // Tell everyone this player guessed correctly
+      io.to(roomId).emit('player-guessed', { 
+        playerId: socket.id,
+        username: player.username,
+        score: player.score
+      });
+      
+      // Private message to the player who guessed correctly
+      socket.emit('correct-guess', { word: room.currentWord });
+    } else {
+      // Regular chat message
+      const chatMsg = {
+        id: uuidv4(),
+        playerId: socket.id,
+        username: player.username,
+        message,
+        isSystem: false
+      };
+      
+      // Store the message
+      room.messages.push(chatMsg);
+      
+      // Send to all clients in the room
+      io.to(roomId).emit('new-message', chatMsg);
+    }
+  });
+  
+  // Disconnect
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+    
+    // Find which room this socket was in
+    for (const roomId in rooms) {
+      const room = rooms[roomId];
+      const playerIndex = room.players.findIndex(p => p.id === socket.id);
+      
+      if (playerIndex !== -1) {
+        const player = room.players[playerIndex];
+        room.players.splice(playerIndex, 1);
+        
+        // Notify other players
+        io.to(roomId).emit('player-left', { playerId: socket.id, username: player.username });
+        
+        // If room is empty, delete it
+        if (room.players.length === 0) {
+          delete rooms[roomId];
+          console.log(`Room ${roomId} deleted (empty)`);
+        }
+        // If the disconnected player was drawing, move to next player/round
+        else if (player.isDrawing && room.gameActive) {
+          handleNextTurn(roomId);
+        }
+        
+        break;
+      }
+    }
+  });
+});
+
+// Timer for each round
+function startRoundTimer(roomId) {
+  const room = rooms[roomId];
+  if (!room) return;
+  
+  const interval = setInterval(() => {
+    room.timeLeft -= 1;
+    
+    // Update clients about time
+    io.to(roomId).emit('time-update', { timeLeft: room.timeLeft });
+    
+    // End of turn
+    if (room.timeLeft <= 0) {
+      clearInterval(interval);
+      
+      // Reveal the word to everyone
+      io.to(roomId).emit('turn-ended', { word: room.currentWord });
+      
+      // Wait a bit before moving to next turn
+      setTimeout(() => {
+        handleNextTurn(roomId);
+      }, 3000);
+    }
+  }, 1000);
+}
+
+// Handle next turn or end the game
+function handleNextTurn(roomId) {
+  const room = rooms[roomId];
+  if (!room) return;
+  
+  // Reset current drawer
+  const currentDrawerIndex = room.currentDrawerIndex;
+  if (currentDrawerIndex !== -1 && room.players[currentDrawerIndex]) {
+    room.players[currentDrawerIndex].isDrawing = false;
+  }
+  
+  const { nextIndex, nextDrawerId } = getNextDrawer(room);
+  room.currentDrawerIndex = nextIndex;
+  
+  // If we've gone through all players, move to next round
+  if (nextIndex === 0) {
+    room.currentRound += 1;
+  }
+  
+  // Check if game is over
+  if (room.currentRound > room.totalRounds) {
+    // End the game
+    room.gameActive = false;
+    
+    // Sort players by score
+    const sortedPlayers = [...room.players].sort((a, b) => b.score - a.score);
+    
+    // Send game over event
+    io.to(roomId).emit('game-over', { 
+      players: sortedPlayers
+    });
+  } else {
+    // Set new drawer
+    if (room.players[nextIndex]) {
+      room.players[nextIndex].isDrawing = true;
+      
+      // Send word options to new drawer
+      const wordOptions = getRandomWords(3);
+      
+      io.to(nextDrawerId).emit('select-word', { words: wordOptions });
+      io.to(roomId).emit('next-turn', { 
+        currentRound: room.currentRound,
+        totalRounds: room.totalRounds,
+        currentDrawer: room.players[nextIndex].username
+      });
+    }
+  }
+}
+
+// Health check route
+app.get('/health', (req, res) => {
+  res.send('Server is running');
+});
+
+// Start the server
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});

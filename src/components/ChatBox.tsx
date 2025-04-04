@@ -4,18 +4,42 @@ import { Send, SmilePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface ChatMessage {
   id: number;
   username: string;
   message: string;
-  type: 'normal' | 'system' | 'correct-guess';
+  type: 'normal' | 'system' | 'correct-guess' | 'emote';
 }
 
 interface ChatBoxProps {
   currentWord?: string;
   onSendGuess?: (guess: string) => void;
 }
+
+const emotes = [
+  { code: ':)', emoji: '😊' },
+  { code: ':(', emoji: '😢' },
+  { code: ':D', emoji: '😃' },
+  { code: ':o', emoji: '😮' },
+  { code: ';)', emoji: '😉' },
+  { code: ':p', emoji: '😛' },
+  { code: '<3', emoji: '❤️' },
+  { code: 'gg', emoji: '👍' },
+  { code: 'xD', emoji: '😂' },
+  { code: '*_*', emoji: '😍' },
+  { code: '>:(', emoji: '😠' },
+  { code: ':|', emoji: '😐' },
+  { code: ':clap:', emoji: '👏' },
+  { code: ':wave:', emoji: '👋' },
+  { code: ':think:', emoji: '🤔' },
+  { code: ':fire:', emoji: '🔥' },
+  { code: ':tada:', emoji: '🎉' },
+  { code: ':eyes:', emoji: '👀' },
+  { code: ':trophy:', emoji: '🏆' },
+  { code: ':100:', emoji: '💯' }
+];
 
 const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -54,12 +78,19 @@ const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess }) => {
         },
       ]);
     } else {
+      // Replace text emoticons with emoji
+      let processedMessage = input;
+      emotes.forEach(emote => {
+        const regex = new RegExp(emote.code.replace(/([.*+?^=!:${}()|[\]/\\])/g, '\\$1'), 'g');
+        processedMessage = processedMessage.replace(regex, emote.emoji);
+      });
+      
       setMessages([
         ...messages,
         {
           id: messages.length + 1,
           username: 'Player1', // In a real app, this would be the current player
-          message: input,
+          message: processedMessage,
           type: 'normal',
         },
       ]);
@@ -71,6 +102,21 @@ const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess }) => {
     }
     
     setInput('');
+  };
+  
+  const handleEmoteClick = (emoji: string) => {
+    setInput(prev => prev + " " + emoji + " ");
+  };
+
+  const renderMessageContent = (message: string) => {
+    // Check if the message is just an emoji
+    const isOnlyEmoji = emotes.some(emote => message === emote.emoji);
+    
+    if (isOnlyEmoji) {
+      return <span className="text-2xl">{message}</span>;
+    }
+    
+    return message;
   };
 
   return (
@@ -89,25 +135,45 @@ const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess }) => {
                   ? 'bg-secondary text-secondary-foreground italic'
                   : msg.type === 'correct-guess'
                   ? 'bg-green-100 text-green-800'
+                  : msg.type === 'emote'
+                  ? 'text-center'
                   : 'bg-gray-100'
               }`}
             >
-              <span className="font-bold">{msg.username}: </span>
-              {msg.message}
+              {msg.type !== 'emote' && <span className="font-bold">{msg.username}: </span>}
+              {renderMessageContent(msg.message)}
             </div>
           ))}
         </div>
       </ScrollArea>
       
       <div className="border-t p-2 flex items-center">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-gray-500 hover:text-primary"
-          title="Emotes"
-        >
-          <SmilePlus className="h-5 w-5" />
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-gray-500 hover:text-primary"
+              title="Emotes"
+            >
+              <SmilePlus className="h-5 w-5" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-2">
+            <div className="grid grid-cols-5 gap-2">
+              {emotes.map((emote) => (
+                <button
+                  key={emote.code}
+                  onClick={() => handleEmoteClick(emote.emoji)}
+                  className="text-xl hover:bg-gray-100 p-1 rounded"
+                  title={emote.code}
+                >
+                  {emote.emoji}
+                </button>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
         <Input
           className="flex-1 mx-1"
           placeholder="Type your guess..."
