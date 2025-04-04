@@ -4,9 +4,12 @@ import { io, Socket } from 'socket.io-client';
 // The URL of your WebSocket server
 const SOCKET_URL = 'http://localhost:3001';
 
+// Define a more specific callback type to match Socket.IO's expectations
+type SocketCallback = (...args: any[]) => void;
+
 class SocketService {
   private socket: Socket | null = null;
-  private listeners: Map<string, Function[]> = new Map();
+  private listeners: Map<string, SocketCallback[]> = new Map();
 
   // Connect to the WebSocket server
   connect() {
@@ -60,7 +63,7 @@ class SocketService {
   }
 
   // Listen for an event from the server
-  on(event: string, callback: Function) {
+  on(event: string, callback: SocketCallback) {
     // Store the callback for reconnection
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
@@ -79,9 +82,9 @@ class SocketService {
   }
   
   // Remove specific event listener
-  off(event: string, callback: Function) {
+  off(event: string, callback: SocketCallback) {
     if (this.socket) {
-      this.socket.off(event, callback as any);
+      this.socket.off(event, callback);
     }
     
     // Also remove from stored listeners
