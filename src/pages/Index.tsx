@@ -61,7 +61,7 @@ const Index = () => {
   };
 
   return (
-    <div className={`min-h-screen flex flex-col ${theme === 'dark' ? 'dark' : ''}`}>
+    <div className={`min-h-screen flex flex-col bg-gradient-to-br ${theme === 'dark' ? 'from-blue-950 to-game-blue-dark' : 'from-game-blue-light to-game-blue-dark'}`}>
       {roomCode ? (
         <GameRoom roomCode={roomCode} onLeaveRoom={handleLeaveRoom} />
       ) : (

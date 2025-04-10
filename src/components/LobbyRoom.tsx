@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,7 +40,7 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
     const handleRoomCreated = (data: { roomId: string, playerId: string, hostId: string }) => {
       console.log('Room created:', data);
       setWaiting(true);
-      setIsHost(data.hostId === socketService.getSocketId());
+      setIsHost(true); // Always set creator as host
       socketService.requestRoomState();
       toast({
         title: 'Room Created',
@@ -81,7 +80,20 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
     const handleRoomState = (data: { players: Player[], roomId: string, hostId: string }) => {
       console.log('Room state update:', data);
       setPlayers(data.players);
-      setIsHost(data.hostId === socketService.getSocketId());
+      
+      // Ensure there's a host
+      if (data.hostId) {
+        setIsHost(data.hostId === socketService.getSocketId());
+      } else if (data.players && data.players.length > 0) {
+        // If no host is assigned and there are players, make the first player host
+        const isFirstPlayer = data.players[0].id === socketService.getSocketId();
+        setIsHost(isFirstPlayer);
+        
+        // If this client is the first player and there's no host, notify the server
+        if (isFirstPlayer && data.roomId) {
+          socketService.assignHost(data.roomId, socketService.getSocketId());
+        }
+      }
     };
     
     const handleGameStarted = (data: any) => {

@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 
 // The URL of your WebSocket server
@@ -216,6 +215,14 @@ class SocketService {
       return;
     }
     this.emit('request-room-state', { roomId: this.currentRoomId });
+  }
+
+  // Add this new method to the class
+  assignHost(roomId: string, playerId: string) {
+    if (this.socket) {
+      this.socket.emit('assign-host', { roomId, playerId });
+      console.log(`Assigned host in room ${roomId} to player ${playerId}`);
+    }
   }
 }
 

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import Canvas from './Canvas';
@@ -10,6 +9,7 @@ import CurrentWord from './CurrentWord';
 import { ArrowLeft, Moon, Sun } from 'lucide-react';
 import socketService from '../services/socket';
 import { useToast } from '@/components/ui/use-toast';
+import { useTheme } from '@/hooks/use-theme';
 
 interface GameRoomProps {
   roomCode: string;
@@ -52,13 +52,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
   ]);
   const [isHost, setIsHost] = useState(false);
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     if (!socketService.isConnected()) {
       socketService.connect();
     }
     
-    // Check if the current player is the host
     const checkIfHost = () => {
       const currentId = socketService.getSocketId();
       const roomState = socketService.getRoomState();
@@ -74,10 +74,16 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       if (data.currentRound) setCurrentRound(data.currentRound);
       if (data.totalRounds) setTotalRounds(data.totalRounds);
       
-      // Set host status based on hostId from room state
       const currentId = socketService.getSocketId();
-      if (data.hostId === currentId) {
-        setIsHost(true);
+      if (data.hostId) {
+        setIsHost(data.hostId === currentId);
+      } else if (data.players && data.players.length > 0) {
+        const isFirstPlayer = data.players[0].id === currentId;
+        setIsHost(isFirstPlayer);
+        
+        if (isFirstPlayer) {
+          socketService.assignHost(roomCode, currentId);
+        }
       }
     };
     
@@ -107,7 +113,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     const onDrawingStarted = (data: any) => {
       console.log('Drawing started:', data);
       setIsDrawing(false);
-      setCurrentWord("?".repeat(data.wordLength));
+      const wordPlaceholder = '_'.repeat(data.wordLength);
+      setCurrentWord(wordPlaceholder);
       toast({
         title: "Round Started",
         description: `${getPlayerNameById(data.drawer)} is drawing!`
@@ -307,8 +314,12 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     onLeaveRoom();
   };
 
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
   return (
-    <div className="container mx-auto p-4 flex flex-col h-screen dark:bg-gray-900 dark:text-white">
+    <div className="container mx-auto p-4 flex flex-col h-screen">
       <div className="flex justify-between items-center mb-4">
         <Button 
           variant="ghost" 
@@ -322,16 +333,23 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
           <span className="font-semibold text-sm">Room: </span>
           <span className="bg-white dark:bg-gray-800 px-2 py-1 rounded text-sm">{roomCode}</span>
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center gap-2">
           <span className="mr-2 text-sm">Round {currentRound}/{totalRounds}</span>
           <GameTimer timeLeft={timeLeft} />
+          <Button 
+            variant="outline" 
+            size="icon" 
+            onClick={toggleTheme} 
+            className="h-8 w-8"
+          >
+            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
         </div>
       </div>
       
       {isGameActive ? (
         <>
           <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-4">
-            {/* Main drawing area */}
             <div className="lg:col-span-3 flex flex-col gap-4">
               <div className="flex items-center justify-center">
                 <CurrentWord word={currentWord || ''} isDrawing={isDrawing} />
@@ -347,7 +365,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                   />
                 )}
                 
-                {/* Replace the blocking full-page message with a non-intrusive banner */}
                 {!isDrawing && isGameActive && !isSelectingWord && !currentWord && (
                   <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-primary text-white px-4 py-2 rounded-full shadow-lg z-10 text-sm font-medium animate-bounce">
                     Waiting for your turn...
@@ -356,33 +373,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
               </div>
             </div>
             
-            {/* Sidebar with Scoreboard and Chat */}
-            <div className="flex flex-col gap-4 lg:block hidden">
-              <ScoreBoard players={players.map(p => ({
-                id: p.id,
-                username: p.username,
-                avatar: '',
-                score: p.score,
-                isDrawing: p.isDrawing,
-                hasGuessedCorrectly: p.hasGuessedCorrectly || false,
-              }))} />
-              <div className="flex-1">
-                <ChatBox 
-                  currentWord={isDrawing ? currentWord || undefined : undefined}
-                  onSendGuess={handleGuess}
-                  messages={messages}
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Mobile scoreboard toggle - shows below the canvas on smaller screens */}
-          <div className="lg:hidden mt-4">
-            <details className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-              <summary className="bg-primary text-white p-2 cursor-pointer font-medium">
-                View Players ({players.length})
-              </summary>
-              <div className="p-2">
+            <div className="flex flex-col gap-4">
+              <div className="lg:block">
                 <ScoreBoard players={players.map(p => ({
                   id: p.id,
                   username: p.username,
@@ -392,23 +384,32 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                   hasGuessedCorrectly: p.hasGuessedCorrectly || false,
                 }))} />
               </div>
-            </details>
-            
-            <div className="mt-2">
-              <ChatBox 
-                currentWord={isDrawing ? currentWord || undefined : undefined}
-                onSendGuess={handleGuess}
-                messages={messages}
-              />
+              <div className="flex-1 h-[300px] lg:h-auto">
+                <ChatBox 
+                  currentWord={isDrawing ? currentWord || undefined : undefined}
+                  onSendGuess={handleGuess}
+                  messages={messages}
+                />
+              </div>
             </div>
           </div>
         </>
       ) : (
         <div className="flex-1 flex items-center justify-center">
-          <div className="card-container max-w-md w-full animate-fade-in dark:bg-gray-800 dark:text-white">
-            <h2 className="text-2xl font-bold mb-4 blue-gradient-text text-center">
-              {currentRound > totalRounds ? 'Game Over' : 'Ready to Play?'}
-            </h2>
+          <div className="card-container max-w-md w-full animate-fade-in">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-2xl font-bold blue-gradient-text">
+                {currentRound > totalRounds ? 'Game Over' : 'Ready to Play?'}
+              </h2>
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={toggleTheme} 
+                className="h-8 w-8"
+              >
+                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+            </div>
             
             {currentRound > totalRounds ? (
               <div className="text-center">
@@ -440,11 +441,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                 </p>
                 
                 {players.length > 0 && (
-                  <div className="bg-muted rounded-md p-3 mb-4 dark:bg-gray-700">
+                  <div className="bg-muted rounded-md p-3 mb-4">
                     <h3 className="text-sm font-medium mb-2">Players ({players.length})</h3>
                     <div className="space-y-2">
                       {players.map((player) => (
-                        <div key={player.id} className="flex items-center justify-between bg-background dark:bg-gray-600 rounded px-3 py-2">
+                        <div key={player.id} className="flex items-center justify-between bg-background rounded px-3 py-2">
                           <div className="flex items-center">
                             <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground">
                               {player.username.charAt(0).toUpperCase()}
