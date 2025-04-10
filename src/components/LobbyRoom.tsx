@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,7 +41,8 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
     const handleRoomCreated = (data: { roomId: string, playerId: string, hostId: string }) => {
       console.log('Room created:', data);
       setWaiting(true);
-      setIsHost(true); // Always set creator as host
+      setIsHost(true); // Set creator as host
+      setRoomCode(data.roomId);
       socketService.requestRoomState();
       toast({
         title: 'Room Created',
@@ -98,7 +100,10 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
     
     const handleGameStarted = (data: any) => {
       console.log('Game started from lobby:', data);
-      onStartGame(socketService.getCurrentRoomId() || '');
+      const currentRoomId = socketService.getCurrentRoomId();
+      if (currentRoomId) {
+        onStartGame(currentRoomId);
+      }
     };
     
     const handleError = (data: { message: string }) => {
@@ -174,7 +179,19 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
   
   const handleStartGame = () => {
     if (isHost && waiting) {
-      socketService.startGame();
+      console.log('Host is starting the game from lobby...');
+      const currentRoomId = socketService.getCurrentRoomId();
+      if (currentRoomId) {
+        console.log(`Starting game in room: ${currentRoomId}`);
+        socketService.startGame(currentRoomId);
+      } else {
+        console.error('No room ID available to start the game.');
+        toast({
+          title: 'Error',
+          description: 'Could not start game. Room ID not found.',
+          variant: 'destructive',
+        });
+      }
     }
   };
   
@@ -190,9 +207,9 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
   };
 
   if (waiting) {
-    const roomId = socketService.getCurrentRoomId();
+    const roomId = socketService.getCurrentRoomId() || roomCode;
     return (
-      <div className="container mx-auto flex items-center justify-center min-h-screen p-4  dark:text-white">
+      <div className="container mx-auto flex items-center justify-center min-h-screen p-4 dark:text-white">
         <Card className="w-full max-w-md animate-fade-in dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
             <div className="flex items-center justify-between mb-4">
@@ -226,7 +243,7 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
                   <p className="text-sm text-muted-foreground dark:text-gray-400">No players have joined yet</p>
                 )}
                 {players.map((player) => (
-                  <div key={player.id} className="flex items-center justify-between bg-background bg-blue-200  dark:bg-gray-600 rounded px-3 py-2">
+                  <div key={player.id} className="flex items-center justify-between bg-background bg-blue-200 dark:bg-gray-600 rounded px-3 py-2">
                     <div className="flex items-center">
                       <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground">
                         {player.username.charAt(0).toUpperCase()}

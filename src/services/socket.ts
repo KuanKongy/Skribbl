@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 
 // The URL of your WebSocket server
@@ -25,7 +26,12 @@ class SocketService {
 
   // Connect to the WebSocket server
   connect() {
-    if (this.socket) return;
+    if (this.socket && this.socket.connected) return;
+
+    if (this.socket) {
+      this.socket.connect();
+      return;
+    }
 
     this.socket = io(SOCKET_URL);
     
@@ -40,7 +46,9 @@ class SocketService {
     
     // Listen for room state updates
     this.socket.on('room-state', (data) => {
+      console.log('Received room state update:', data);
       this.roomState = data;
+      this.currentRoomId = data.roomId || this.currentRoomId;
     });
     
     // Set up all registered event listeners
@@ -220,7 +228,7 @@ class SocketService {
   // Add this new method to the class
   assignHost(roomId: string, playerId: string) {
     if (this.socket) {
-      this.socket.emit('assign-host', { roomId, playerId });
+      this.emit('assign-host', { roomId, playerId });
       console.log(`Assigned host in room ${roomId} to player ${playerId}`);
     }
   }

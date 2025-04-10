@@ -27,12 +27,14 @@ const Index = () => {
     };
   }, []);
   
-  // Listen for game start events in both lobby and game room
+  // Listen for game start events
   useEffect(() => {
     const handleGameStarted = (data: any) => {
       console.log('Game started event detected in Index:', data);
+      // Make sure we have the current room ID
       const currentRoomId = socketService.getCurrentRoomId();
-      if (currentRoomId && !roomCode) {
+      if (currentRoomId) {
+        console.log(`Setting room code to ${currentRoomId} and moving to game room`);
         setRoomCode(currentRoomId);
       }
     };
@@ -42,11 +44,13 @@ const Index = () => {
     return () => {
       socketService.off('game-started', handleGameStarted);
     };
-  }, [roomCode]);
+  }, []);
   
   const handleStartGame = (code: string) => {
     console.log(`Starting game with room code: ${code}`);
-    setRoomCode(code);
+    if (code) {
+      setRoomCode(code);
+    }
   };
   
   const handleLeaveRoom = () => {
