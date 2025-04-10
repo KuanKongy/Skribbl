@@ -192,7 +192,7 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
   if (waiting) {
     const roomId = socketService.getCurrentRoomId();
     return (
-      <div className="container mx-auto flex items-center justify-center min-h-screen p-4 dark:bg-gray-900 dark:text-white">
+      <div className="container mx-auto flex items-center justify-center min-h-screen p-4  dark:text-white">
         <Card className="w-full max-w-md animate-fade-in dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
             <div className="flex items-center justify-between mb-4">
@@ -226,7 +226,7 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
                   <p className="text-sm text-muted-foreground dark:text-gray-400">No players have joined yet</p>
                 )}
                 {players.map((player) => (
-                  <div key={player.id} className="flex items-center justify-between bg-background dark:bg-gray-600 rounded px-3 py-2">
+                  <div key={player.id} className="flex items-center justify-between bg-background bg-blue-200  dark:bg-gray-600 rounded px-3 py-2">
                     <div className="flex items-center">
                       <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground">
                         {player.username.charAt(0).toUpperCase()}
@@ -270,7 +270,7 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
   }
 
   return (
-    <div className="container mx-auto flex items-center justify-center min-h-screen p-4 dark:bg-gray-900 dark:text-white">
+    <div className="container mx-auto flex items-center justify-center min-h-screen p-4  dark:text-white">
       <Card className="w-full max-w-md animate-fade-in dark:bg-gray-800 dark:border-gray-700">
         <CardHeader>
           <div className="flex items-center justify-center mb-4">
@@ -308,7 +308,7 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
             onValueChange={setActiveTab}
             className="w-full"
           >
-            <TabsList className="grid grid-cols-2 mb-4">
+            <TabsList className="grid grid-cols-2 mb-4 bg-blue-100 dark:bg-blue-900" >
               <TabsTrigger value="join" className="dark:data-[state=active]:bg-primary dark:text-gray-300">Join Room</TabsTrigger>
               <TabsTrigger value="create" className="dark:data-[state=active]:bg-primary dark:text-gray-300">Create Room</TabsTrigger>
             </TabsList>
