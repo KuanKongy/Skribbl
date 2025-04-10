@@ -8,6 +8,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 const Index = () => {
   const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [gameStarted, setGameStarted] = useState(false);
   const { toast } = useToast();
   const { theme } = useTheme();
   
@@ -36,6 +37,7 @@ const Index = () => {
       if (currentRoomId) {
         console.log(`Setting room code to ${currentRoomId} and moving to game room`);
         setRoomCode(currentRoomId);
+        setGameStarted(true);
       }
     };
     
@@ -50,11 +52,13 @@ const Index = () => {
     console.log(`Starting game with room code: ${code}`);
     if (code) {
       setRoomCode(code);
+      setGameStarted(true);
     }
   };
   
   const handleLeaveRoom = () => {
     setRoomCode(null);
+    setGameStarted(false);
     socketService.disconnect();
     toast({
       title: 'Left Room',
@@ -66,7 +70,7 @@ const Index = () => {
 
   return (
     <div className={`min-h-screen flex flex-col bg-gradient-to-br ${theme === 'dark' ? 'from-blue-950 to-game-blue-dark' : 'from-game-blue-light to-game-blue-dark'}`}>
-      {roomCode ? (
+      {roomCode && gameStarted ? (
         <GameRoom roomCode={roomCode} onLeaveRoom={handleLeaveRoom} />
       ) : (
         <LobbyRoom onStartGame={handleStartGame} />

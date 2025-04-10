@@ -37,7 +37,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
   const [wordOptions, setWordOptions] = useState<string[]>([]);
   const [currentWord, setCurrentWord] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(60);
-  const [isGameActive, setIsGameActive] = useState(false);
+  const [isGameActive, setIsGameActive] = useState(true);
   const [currentRound, setCurrentRound] = useState(1);
   const [totalRounds, setTotalRounds] = useState(3);
   const [showWordSelection, setShowWordSelection] = useState(false);
@@ -70,7 +70,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     const onRoomState = (data: any) => {
       console.log('Room state in GameRoom:', data);
       setPlayers(data.players);
-      setIsGameActive(data.gameActive);
+      if (data.gameActive === false) {
+        setIsGameActive(false);
+      } else {
+        setIsGameActive(true);
+      }
       if (data.currentRound) setCurrentRound(data.currentRound);
       if (data.totalRounds) setTotalRounds(data.totalRounds);
       
@@ -88,7 +92,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     };
     
     const onGameStarted = (data: any) => {
-      console.log('Game started:', data);
+      console.log('Game started in GameRoom:', data);
       setIsGameActive(true);
       setCurrentRound(data.currentRound);
       setTotalRounds(data.totalRounds);
@@ -298,6 +302,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
   };
 
   const startGame = () => {
+    console.log('Host starting game from GameRoom...');
     socketService.startGame(roomCode);
   };
 
@@ -439,8 +444,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                   guess the word.
                 </p>
                 
-                {players.length > 0 && (
-                  <div className="bg-muted rounded-md p-3 mb-4">
+                {players.length > 0 ? (
+                  <div className="bg-muted dark:bg-gray-700 rounded-md p-3 mb-4">
                     <h3 className="text-sm font-medium mb-2">Players ({players.length})</h3>
                     <div className="space-y-2">
                       {players.map((player) => (
@@ -463,6 +468,10 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                       ))}
                     </div>
                   </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground dark:text-gray-400 text-center my-4">
+                    Waiting for players to join...
+                  </p>
                 )}
                 
                 <div className="text-center">

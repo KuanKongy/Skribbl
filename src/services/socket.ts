@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 
 // The URL of your WebSocket server
@@ -184,6 +183,11 @@ class SocketService {
     
     console.log('Starting game in room:', actualRoomId);
     this.emit('start-game', { roomId: actualRoomId });
+    
+    // Update local room state to indicate game is active
+    if (this.roomState) {
+      this.roomState.gameActive = true;
+    }
   }
   
   // Select a word (when drawing)
