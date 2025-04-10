@@ -249,6 +249,7 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
             onClick={() => setTool('brush')}
             className="flex items-center"
             title="Brush"
+            disabled={!isDrawingEnabled}
           >
             <Palette className="h-4 w-4 mr-1" />
             <span className="sr-only md:not-sr-only md:inline-block">Brush</span>
@@ -259,6 +260,7 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
             onClick={() => setTool('eraser')}
             className="flex items-center"
             title="Eraser"
+            disabled={!isDrawingEnabled}
           >
             <Eraser className="h-4 w-4 mr-1" />
             <span className="sr-only md:not-sr-only md:inline-block">Eraser</span>
@@ -269,6 +271,7 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
             onClick={() => setTool('fill')}
             className="flex items-center"
             title="Fill"
+            disabled={!isDrawingEnabled}
           >
             <PaintBucket className="h-4 w-4 mr-1" />
             <span className="sr-only md:not-sr-only md:inline-block">Fill</span>
@@ -279,6 +282,7 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
             onClick={clearCanvas}
             className="flex items-center"
             title="Clear Canvas"
+            disabled={!isDrawingEnabled}
           >
             <Trash2 className="h-4 w-4 mr-1" />
             <span className="sr-only md:not-sr-only md:inline-block">Clear</span>
@@ -291,11 +295,12 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
             <button
               key={c}
               className={`w-6 h-6 rounded-full border-2 ${
-                color === c ? 'border-gray-800' : 'border-gray-300'
+                color === c ? 'border-gray-800 dark:border-white' : 'border-gray-300 dark:border-gray-700'
               }`}
               style={{ backgroundColor: c }}
               onClick={() => setColor(c)}
               title={`Color ${c}`}
+              disabled={!isDrawingEnabled}
             />
           ))}
           {/* Brush size slider */}
@@ -307,17 +312,17 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
             onChange={(e) => setBrushSize(parseInt(e.target.value))}
             className="w-20 ml-2"
             title="Brush Size"
+            disabled={!isDrawingEnabled}
           />
         </div>
       </div>
       
       <div className="flex-1 canvas-container relative">
         {!isDrawingEnabled && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 rounded-lg z-10">
-            <div className="bg-white p-4 rounded-lg shadow-lg">
-              <MousePointer2 className="h-6 w-6 mx-auto mb-2" />
-              <p className="text-sm">Waiting for your turn...</p>
-            </div>
+          <div className="absolute top-2 left-1/2 transform -translate-x-1/2 text-center">
+            <span className="bg-primary/80 text-primary-foreground text-sm px-3 py-1 rounded-full">
+              {isDrawing ? "Your turn to draw!" : "Waiting for your turn..."}
+            </span>
           </div>
         )}
         <canvas

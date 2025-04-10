@@ -352,7 +352,12 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
           <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-4">
             <div className="lg:col-span-3 flex flex-col gap-4">
               <div className="flex items-center justify-center">
-                <CurrentWord word={currentWord || ''} isDrawing={isDrawing} />
+                <CurrentWord 
+                  word={currentWord || ''} 
+                  isDrawing={isDrawing} 
+                  timeLeft={timeLeft}
+                  totalTime={60}
+                />
               </div>
               
               <div className="flex-1 relative">
@@ -364,17 +369,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                     timeLeft={timeLeft}
                   />
                 )}
-                
-                {!isDrawing && isGameActive && !isSelectingWord && !currentWord && (
-                  <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-primary text-white px-4 py-2 rounded-full shadow-lg z-10 text-sm font-medium animate-bounce">
-                    Waiting for your turn...
-                  </div>
-                )}
               </div>
             </div>
             
-            <div className="flex flex-col gap-4">
-              <div className="lg:block">
+            <div className="flex flex-col gap-4 h-full">
+              <div className="lg:block flex-1">
                 <ScoreBoard players={players.map(p => ({
                   id: p.id,
                   username: p.username,
@@ -384,7 +383,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                   hasGuessedCorrectly: p.hasGuessedCorrectly || false,
                 }))} />
               </div>
-              <div className="flex-1 h-[300px] lg:h-auto">
+              <div className="flex-1 h-[300px] lg:h-[calc(100%-280px)]">
                 <ChatBox 
                   currentWord={isDrawing ? currentWord || undefined : undefined}
                   onSendGuess={handleGuess}

@@ -20,15 +20,15 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({ players }) => {
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
   
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden h-full">
       <div className="bg-primary p-2 text-white">
-        <h3 className="text-sm font-semibold">Players</h3>
+        <h3 className="text-sm font-semibold">Players ({sortedPlayers.length})</h3>
       </div>
       
       <div className="divide-y dark:divide-gray-700 max-h-[250px] overflow-y-auto">
         {sortedPlayers.length === 0 ? (
           <div className="p-3 text-center text-sm text-gray-500 dark:text-gray-400">
-            No players have joined yet.
+            Waiting for players...
           </div>
         ) : (
           sortedPlayers.map((player, index) => (
@@ -64,7 +64,7 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({ players }) => {
                   </div>
                 </div>
                 <div>
-                  <p className="text-sm font-medium dark:text-white">
+                  <p className="text-sm font-medium dark:text-white truncate max-w-[100px]">
                     {player.username}
                     {player.isDrawing && (
                       <span className="ml-1 text-xs text-blue-500 dark:text-blue-300">(drawing)</span>
