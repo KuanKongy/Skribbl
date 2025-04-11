@@ -28,6 +28,11 @@ const WordSelection: React.FC<WordSelectionProps> = ({ words, onSelect, timeLeft
     return () => clearInterval(timer);
   }, [selectionTimeLeft, words, onSelect]);
 
+  // For debugging purposes
+  useEffect(() => {
+    console.log("WordSelection mounted with words:", words);
+  }, [words]);
+
   return (
     <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center z-20 bg-black/30">
       <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-md w-full animate-fade-in">

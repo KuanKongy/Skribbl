@@ -1,4 +1,3 @@
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -179,6 +178,7 @@ io.on('connection', (socket) => {
     room.players.forEach(player => {
       player.isDrawing = false;
       player.hasGuessedCorrectly = false;
+      player.score = 0; // Reset score when starting a new game
     });
     
     // Select first drawer
@@ -186,16 +186,25 @@ io.on('connection', (socket) => {
     room.currentDrawerIndex = drawerIndex;
     room.players[drawerIndex].isDrawing = true;
     
-    // Send word options to first drawer
-    const wordOptions = getRandomWords(3);
+    const firstDrawer = room.players[drawerIndex];
+    console.log(`First drawer selected: ${firstDrawer.username} (${firstDrawer.id})`);
     
-    io.to(room.players[drawerIndex].id).emit('select-word', { words: wordOptions });
+    // Send game started event to all players
     io.to(roomId).emit('game-started', { 
       currentRound: room.currentRound,
       totalRounds: room.totalRounds,
       currentDrawer: room.players[drawerIndex].username,
       players: room.players // Send updated player list
     });
+    
+    // Send word options to first drawer - make sure this happens after game-started
+    const wordOptions = getRandomWords(3);
+    console.log(`Sending word options to first drawer: ${firstDrawer.username}`, wordOptions);
+    
+    // Slight delay to ensure client has processed game-started event first
+    setTimeout(() => {
+      io.to(firstDrawer.id).emit('select-word', { words: wordOptions });
+    }, 500);
     
     // Start a 20-second timer for word selection
     clearTimeout(room.wordSelectionTimer);
@@ -349,6 +358,7 @@ function handleWordSelected(roomId, drawerId, word) {
     room.wordSelectionTimer = null;
   }
   
+  console.log(`Word "${word}" selected in room ${roomId} by drawer ${drawerId}`);
   room.currentWord = word;
   room.timeLeft = 60;
   
@@ -371,8 +381,6 @@ function handleWordSelected(roomId, drawerId, word) {
   
   // Start the round timer
   startRoundTimer(roomId);
-  
-  console.log(`Word selected in room ${roomId}: ${word}`);
 }
 
 // Timer for each round

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import Canvas from './Canvas';
@@ -55,7 +54,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
 
-  // Request room state on component mount
   useEffect(() => {
     console.log('GameRoom mounted, connecting to socket if needed');
     if (!socketService.isConnected()) {
@@ -65,7 +63,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     socketService.requestRoomState();
   }, [roomCode]);
   
-  // Set up event listeners for the game
   useEffect(() => {
     const checkIfHost = () => {
       const currentId = socketService.getSocketId();
@@ -118,9 +115,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       if (data.players && Array.isArray(data.players)) {
         setPlayers(data.players);
         
-        // Check if current player is the drawer
         const currentId = socketService.getSocketId();
         const isDrawer = data.players.some((p: any) => p.id === currentId && p.isDrawing);
+        console.log("Current player is drawer:", isDrawer);
         setIsDrawing(isDrawer);
       }
       
@@ -131,11 +128,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     };
     
     const onSelectWord = (data: any) => {
-      console.log('Select word:', data);
-      setIsDrawing(true);
-      setIsSelectingWord(true);
+      console.log('Select word event received:', data);
       setWordOptions(data.words || []);
       setShowWordSelection(true);
+      setIsSelectingWord(true);
+      
       toast({
         title: "Your Turn",
         description: "Select a word to draw!"
@@ -147,17 +144,14 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       setShowWordSelection(false);
       setIsSelectingWord(false);
       
-      // Update timeLeft if provided
       if (data.timeLeft) {
         setTimeLeft(data.timeLeft);
       }
       
-      // Only set isDrawing for the drawer
       const currentId = socketService.getSocketId();
       const isCurrentDrawer = data.drawer === currentId;
       setIsDrawing(isCurrentDrawer);
       
-      // Update word placeholder for guessers
       if (!isCurrentDrawer) {
         const wordPlaceholder = '_'.repeat(data.wordLength);
         setCurrentWord(wordPlaceholder);
@@ -215,16 +209,14 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       setCurrentRound(data.currentRound);
       setCurrentWord(null);
       
-      // Update player statuses
-      setPlayers(prevPlayers => {
-        return prevPlayers.map(player => ({
+      setPlayers(prev => {
+        return prev.map(player => ({
           ...player,
           isDrawing: player.username === data.currentDrawer,
           hasGuessedCorrectly: false
         }));
       });
       
-      // Check if current player is the new drawer
       const currentId = socketService.getSocketId();
       const currentPlayer = players.find(p => p.id === currentId);
       const isCurrentPlayerDrawing = currentPlayer?.username === data.currentDrawer;
@@ -299,7 +291,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       
       const wasHost = socketService.getRoomState()?.hostId === data.playerId;
       if (wasHost) {
-        // Check if I'm the new host
         const newHostId = socketService.getRoomState()?.hostId;
         if (newHostId === socketService.getSocketId()) {
           setIsHost(true);
