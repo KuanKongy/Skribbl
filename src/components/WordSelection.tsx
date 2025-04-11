@@ -29,10 +29,10 @@ const WordSelection: React.FC<WordSelectionProps> = ({ words, onSelect, timeLeft
   }, [selectionTimeLeft, words, onSelect]);
 
   return (
-    <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center z-20">
-      <div className="card-container max-w-md w-full animate-slide-up dark:bg-gray-800 dark:text-white">
+    <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center z-20 bg-black/30">
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-md w-full animate-fade-in">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-center blue-gradient-text">
+          <h2 className="text-xl font-bold text-center text-primary dark:text-white">
             Choose a word to draw
           </h2>
           <div className="flex items-center font-mono font-bold text-red-500">

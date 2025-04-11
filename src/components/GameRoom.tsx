@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import Canvas from './Canvas';
 import ChatBox from './ChatBox';
@@ -55,13 +55,18 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
 
+  // Request room state on component mount
   useEffect(() => {
+    console.log('GameRoom mounted, connecting to socket if needed');
     if (!socketService.isConnected()) {
       socketService.connect();
     }
     
     socketService.requestRoomState();
-    
+  }, [roomCode]);
+  
+  // Set up event listeners for the game
+  useEffect(() => {
     const checkIfHost = () => {
       const currentId = socketService.getSocketId();
       const roomState = socketService.getRoomState();
@@ -192,6 +197,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     };
     
     const onTimeUpdate = (data: any) => {
+      console.log('Time update:', data.timeLeft);
       setTimeLeft(data.timeLeft);
     };
     
@@ -375,9 +381,9 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     };
   }, [roomCode, toast, totalRounds, messages.length, players]);
 
-  const getPlayerNameById = (id: string) => {
+  const getPlayerNameById = useCallback((id: string) => {
     return players.find(p => p.id === id)?.username || 'Unknown';
-  };
+  }, [players]);
 
   const handleWordSelect = (word: string) => {
     setCurrentWord(word);

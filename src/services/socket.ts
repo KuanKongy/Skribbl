@@ -23,30 +23,48 @@ class SocketService {
   private currentRoomId: string | null = null;
   private currentPlayerId: string | null = null;
   private roomState: RoomState | null = null;
+  private reconnectAttempts: number = 0;
+  private maxReconnectAttempts: number = 5;
 
   // Connect to the WebSocket server
   connect() {
-    if (this.socket && this.socket.connected) return;
+    if (this.socket && this.socket.connected) {
+      console.log('Socket already connected');
+      return;
+    }
 
     if (this.socket) {
+      console.log('Reconnecting existing socket...');
       this.socket.connect();
       return;
     }
 
-    this.socket = io(SOCKET_URL);
+    console.log('Creating new socket connection to:', SOCKET_URL);
+    this.socket = io(SOCKET_URL, {
+      reconnectionAttempts: this.maxReconnectAttempts,
+      timeout: 10000
+    });
     
     this.socket.on('connect', () => {
       console.log('Connected to server with ID:', this.socket?.id);
       this.currentPlayerId = this.socket?.id || null;
+      this.reconnectAttempts = 0;
       
       // If we have a room ID stored, automatically request room state
       if (this.currentRoomId) {
+        console.log('Auto-requesting room state for room:', this.currentRoomId);
         this.requestRoomState();
       }
     });
     
     this.socket.on('connect_error', (err) => {
       console.error('Connection error:', err.message);
+      this.reconnectAttempts++;
+      
+      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        console.error('Max reconnection attempts reached');
+        this.socket?.disconnect();
+      }
     });
     
     // Listen for room state updates

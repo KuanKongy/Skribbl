@@ -13,7 +13,8 @@ const io = new Server(server, {
   cors: {
     origin: '*', // In production, limit this to your frontend domain
     methods: ['GET', 'POST']
-  }
+  },
+  pingTimeout: 60000
 });
 
 // Storage for game rooms
@@ -197,6 +198,7 @@ io.on('connection', (socket) => {
     });
     
     // Start a 20-second timer for word selection
+    clearTimeout(room.wordSelectionTimer);
     room.wordSelectionTimer = setTimeout(() => {
       // If word not selected after 20 seconds, auto-select
       if (!room.currentWord) {
@@ -210,6 +212,7 @@ io.on('connection', (socket) => {
   
   // Word selected by drawer
   socket.on('word-selected', ({ roomId, word }) => {
+    console.log(`Word selected in room ${roomId}: ${word} by player ${socket.id}`);
     handleWordSelected(roomId, socket.id, word);
   });
   
