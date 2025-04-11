@@ -129,7 +129,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       console.log('Select word:', data);
       setIsDrawing(true);
       setIsSelectingWord(true);
-      setWordOptions(data.words);
+      setWordOptions(data.words || []);
       setShowWordSelection(true);
       toast({
         title: "Your Turn",
@@ -140,18 +140,27 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     const onDrawingStarted = (data: any) => {
       console.log('Drawing started:', data);
       setShowWordSelection(false);
+      setIsSelectingWord(false);
+      
+      // Update timeLeft if provided
+      if (data.timeLeft) {
+        setTimeLeft(data.timeLeft);
+      }
       
       // Only set isDrawing for the drawer
       const currentId = socketService.getSocketId();
-      setIsDrawing(data.drawer === currentId);
+      const isCurrentDrawer = data.drawer === currentId;
+      setIsDrawing(isCurrentDrawer);
       
       // Update word placeholder for guessers
-      if (data.drawer !== currentId) {
+      if (!isCurrentDrawer) {
         const wordPlaceholder = '_'.repeat(data.wordLength);
         setCurrentWord(wordPlaceholder);
+        
+        const drawerName = getPlayerNameById(data.drawer);
         toast({
           title: "Round Started",
-          description: `${getPlayerNameById(data.drawer)} is drawing!`
+          description: `${drawerName} is drawing!`
         });
       }
     };
@@ -211,7 +220,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       
       // Check if current player is the new drawer
       const currentId = socketService.getSocketId();
-      const isCurrentPlayerDrawing = players.find(p => p.id === currentId)?.username === data.currentDrawer;
+      const currentPlayer = players.find(p => p.id === currentId);
+      const isCurrentPlayerDrawing = currentPlayer?.username === data.currentDrawer;
       setIsDrawing(isCurrentPlayerDrawing);
       
       toast({
@@ -259,12 +269,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
         id: messages.length + 1,
         username: data.username || 'Unknown',
         message: data.message || '',
-        type: data.type || 'normal'
+        type: data.isSystem ? 'system' : 'normal'
       };
       setMessages(prev => [...prev, newMessage]);
     };
     
     const onPlayerJoined = (data: any) => {
+      console.log('Player joined event:', data);
       setPlayers(prev => {
         if (prev.some(p => p.id === data.player.id)) return prev;
         return [...prev, data.player];
@@ -277,11 +288,43 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     };
     
     const onPlayerLeft = (data: any) => {
+      console.log('Player left event:', data);
       setPlayers(prev => prev.filter(p => p.id !== data.playerId));
+      
+      const wasHost = socketService.getRoomState()?.hostId === data.playerId;
+      if (wasHost) {
+        // Check if I'm the new host
+        const newHostId = socketService.getRoomState()?.hostId;
+        if (newHostId === socketService.getSocketId()) {
+          setIsHost(true);
+          toast({
+            title: "You are now the host",
+            description: "The previous host left the room"
+          });
+        }
+      }
+      
       toast({
         title: "Player Left",
         description: `${data.username} has left the room`
       });
+    };
+    
+    const onHostChanged = (data: any) => {
+      const currentId = socketService.getSocketId();
+      if (data.newHostId === currentId) {
+        setIsHost(true);
+        toast({
+          title: "You are now the host",
+          description: "The previous host left the room"
+        });
+      } else {
+        const newHostName = getPlayerNameById(data.newHostId);
+        toast({
+          title: "Host Changed",
+          description: `${newHostName} is now the host`
+        });
+      }
     };
     
     const onError = (data: any) => {
@@ -308,6 +351,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     socketService.on('new-message', onNewMessage);
     socketService.on('player-joined', onPlayerJoined);
     socketService.on('player-left', onPlayerLeft);
+    socketService.on('host-changed', onHostChanged);
     socketService.on('error', onError);
     
     return () => {
@@ -326,6 +370,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       socketService.off('new-message', onNewMessage);
       socketService.off('player-joined', onPlayerJoined);
       socketService.off('player-left', onPlayerLeft);
+      socketService.off('host-changed', onHostChanged);
       socketService.off('error', onError);
     };
   }, [roomCode, toast, totalRounds, messages.length, players]);
@@ -337,6 +382,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
   const handleWordSelect = (word: string) => {
     setCurrentWord(word);
     setShowWordSelection(false);
+    setIsSelectingWord(false);
+    console.log(`Selected word: ${word} for room: ${roomCode}`);
     socketService.selectWord(roomCode, word);
   };
 

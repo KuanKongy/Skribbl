@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 
 // The URL of your WebSocket server
@@ -198,11 +199,6 @@ class SocketService {
     
     console.log('Starting game in room:', actualRoomId);
     this.emit('start-game', { roomId: actualRoomId });
-    
-    // Update local room state to indicate game is active
-    if (this.roomState) {
-      this.roomState.gameActive = true;
-    }
   }
   
   // Select a word (when drawing)
@@ -212,6 +208,7 @@ class SocketService {
       console.error('No room ID available for selecting word.');
       return;
     }
+    console.log('Selecting word in room:', actualRoomId, 'word:', word);
     this.emit('word-selected', { roomId: actualRoomId, word });
   }
   
