@@ -1,6 +1,7 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Circle } from 'lucide-react';
 
 interface WordSelectionProps {
   words: string[];
@@ -9,12 +10,36 @@ interface WordSelectionProps {
 }
 
 const WordSelection: React.FC<WordSelectionProps> = ({ words, onSelect, timeLeft }) => {
+  const [selectionTimeLeft, setSelectionTimeLeft] = useState(20);
+  
+  useEffect(() => {
+    // Create countdown timer for word selection
+    if (selectionTimeLeft <= 0) {
+      // Auto-select random word when time runs out
+      const randomIndex = Math.floor(Math.random() * words.length);
+      onSelect(words[randomIndex]);
+      return;
+    }
+    
+    const timer = setInterval(() => {
+      setSelectionTimeLeft(prev => prev - 1);
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [selectionTimeLeft, words, onSelect]);
+
   return (
     <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center z-20">
       <div className="card-container max-w-md w-full animate-slide-up dark:bg-gray-800 dark:text-white">
-        <h2 className="text-xl font-bold text-center mb-4 blue-gradient-text">
-          Choose a word to draw
-        </h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-center blue-gradient-text">
+            Choose a word to draw
+          </h2>
+          <div className="flex items-center font-mono font-bold text-red-500">
+            <Circle className="h-3 w-3 mr-1 animate-pulse text-red-500" />
+            {selectionTimeLeft}s
+          </div>
+        </div>
         <p className="text-center text-gray-500 dark:text-gray-400 mb-4">
           Select one of these words. You'll have {timeLeft} seconds to draw it.
         </p>

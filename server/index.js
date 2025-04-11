@@ -1,4 +1,3 @@
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -184,34 +183,21 @@ io.on('connection', (socket) => {
       players: room.players // Send updated player list
     });
     
+    // Start a 20-second timer for word selection
+    room.wordSelectionTimer = setTimeout(() => {
+      // If word not selected after 20 seconds, auto-select
+      if (!room.currentWord) {
+        const randomWord = wordOptions[Math.floor(Math.random() * wordOptions.length)];
+        handleWordSelected(roomId, room.players[drawerIndex].id, randomWord);
+      }
+    }, 20000);
+    
     console.log(`Game started in room ${roomId}`);
   });
   
   // Word selected by drawer
   socket.on('word-selected', ({ roomId, word }) => {
-    const room = rooms[roomId];
-    
-    if (!room) {
-      socket.emit('error', { message: 'Room not found' });
-      return;
-    }
-    
-    room.currentWord = word;
-    room.timeLeft = 60;
-    
-    // Tell everyone except drawer that drawing has started (but don't reveal the word)
-    socket.to(roomId).emit('drawing-started', { 
-      drawer: socket.id,
-      wordLength: word.length 
-    });
-    
-    // Tell drawer that they can now draw with the word
-    socket.emit('your-turn', { word });
-    
-    // Start the round timer
-    startRoundTimer(roomId);
-    
-    console.log(`Word selected in room ${roomId}: ${word}`);
+    handleWordSelected(roomId, socket.id, word);
   });
   
   // Drawing update
@@ -306,6 +292,38 @@ io.on('connection', (socket) => {
   });
 });
 
+// Helper function for word selection
+function handleWordSelected(roomId, drawerId, word) {
+  const room = rooms[roomId];
+  
+  if (!room) {
+    return;
+  }
+  
+  // Clear any existing word selection timer
+  if (room.wordSelectionTimer) {
+    clearTimeout(room.wordSelectionTimer);
+    room.wordSelectionTimer = null;
+  }
+  
+  room.currentWord = word;
+  room.timeLeft = 60;
+  
+  // Tell everyone except drawer that drawing has started (but don't reveal the word)
+  io.to(roomId).emit('drawing-started', { 
+    drawer: drawerId,
+    wordLength: word.length 
+  });
+  
+  // Tell drawer that they can now draw with the word
+  io.to(drawerId).emit('your-turn', { word });
+  
+  // Start the round timer
+  startRoundTimer(roomId);
+  
+  console.log(`Word selected in room ${roomId}: ${word}`);
+}
+
 // Timer for each round
 function startRoundTimer(roomId) {
   const room = rooms[roomId];
@@ -383,6 +401,15 @@ function handleNextTurn(roomId) {
         totalRounds: room.totalRounds,
         currentDrawer: room.players[nextIndex].username
       });
+      
+      // Start a 20-second timer for word selection
+      room.wordSelectionTimer = setTimeout(() => {
+        // If word not selected after 20 seconds, auto-select
+        if (!room.currentWord || room.players[nextIndex].isDrawing) {
+          const randomWord = wordOptions[Math.floor(Math.random() * wordOptions.length)];
+          handleWordSelected(roomId, nextDrawerId, randomWord);
+        }
+      }, 20000);
     }
   }
 }
