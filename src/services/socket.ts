@@ -37,6 +37,11 @@ class SocketService {
     this.socket.on('connect', () => {
       console.log('Connected to server with ID:', this.socket?.id);
       this.currentPlayerId = this.socket?.id || null;
+      
+      // If we have a room ID stored, automatically request room state
+      if (this.currentRoomId) {
+        this.requestRoomState();
+      }
     });
     
     this.socket.on('connect_error', (err) => {
@@ -171,6 +176,16 @@ class SocketService {
     this.currentRoomId = roomId;
   }
   
+  // Request current room state (players, game status, etc)
+  requestRoomState() {
+    if (!this.currentRoomId) {
+      console.error('No room ID available for requesting state.');
+      return;
+    }
+    console.log('Requesting room state for room:', this.currentRoomId);
+    this.emit('request-room-state', { roomId: this.currentRoomId });
+  }
+  
   // Start the game
   startGame(roomId?: string) {
     // Use provided roomId or fall back to the stored currentRoomId
@@ -218,15 +233,6 @@ class SocketService {
       return;
     }
     this.emit('chat-message', { roomId: actualRoomId, message });
-  }
-
-  // Request current room state (players, game status, etc)
-  requestRoomState() {
-    if (!this.currentRoomId) {
-      console.error('No room ID available for requesting state.');
-      return;
-    }
-    this.emit('request-room-state', { roomId: this.currentRoomId });
   }
 
   // Add this new method to the class

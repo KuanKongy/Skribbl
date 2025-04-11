@@ -59,6 +59,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       socketService.connect();
     }
     
+    socketService.requestRoomState();
+    
     const checkIfHost = () => {
       const currentId = socketService.getSocketId();
       const roomState = socketService.getRoomState();
@@ -69,16 +71,21 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     
     const onRoomState = (data: any) => {
       console.log('Room state in GameRoom:', data);
-      setPlayers(data.players);
+      if (data.players && Array.isArray(data.players)) {
+        setPlayers(data.players);
+      }
+      
       if (data.gameActive === false) {
         setIsGameActive(false);
       } else {
         setIsGameActive(true);
       }
+      
       if (data.currentRound) setCurrentRound(data.currentRound);
       if (data.totalRounds) setTotalRounds(data.totalRounds);
       
       const currentId = socketService.getSocketId();
+      
       if (data.hostId) {
         setIsHost(data.hostId === currentId);
       } else if (data.players && data.players.length > 0) {
@@ -89,6 +96,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
           socketService.assignHost(roomCode, currentId);
         }
       }
+      
+      if (data.players && Array.isArray(data.players) && currentId) {
+        const currentPlayer = data.players.find((p: any) => p.id === currentId);
+        if (currentPlayer && currentPlayer.isDrawing) {
+          setIsDrawing(true);
+        }
+      }
     };
     
     const onGameStarted = (data: any) => {
@@ -96,6 +110,11 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       setIsGameActive(true);
       setCurrentRound(data.currentRound);
       setTotalRounds(data.totalRounds);
+      
+      if (data.players && Array.isArray(data.players)) {
+        setPlayers(data.players);
+      }
+      
       toast({
         title: "Game Started",
         description: `Round ${data.currentRound} of ${data.totalRounds}. ${data.currentDrawer} is drawing.`

@@ -83,11 +83,12 @@ io.on('connection', (socket) => {
       currentRound: 0,
       totalRounds: 3,
       timeLeft: 60,
-      gameActive: false
+      gameActive: false,
+      hostId: socket.id // Explicitly set host
     };
     
     socket.join(roomId);
-    socket.emit('room-created', { roomId, playerId: socket.id });
+    socket.emit('room-created', { roomId, playerId: socket.id, hostId: socket.id });
     
     // Send initial room state
     broadcastRoomState(roomId);
@@ -161,6 +162,12 @@ io.on('connection', (socket) => {
     room.gameActive = true;
     room.currentRound = 1;
     
+    // Reset any previous drawing state for all players
+    room.players.forEach(player => {
+      player.isDrawing = false;
+      player.hasGuessedCorrectly = false;
+    });
+    
     // Select first drawer
     const drawerIndex = 0;
     room.currentDrawerIndex = drawerIndex;
@@ -173,7 +180,8 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('game-started', { 
       currentRound: room.currentRound,
       totalRounds: room.totalRounds,
-      currentDrawer: room.players[drawerIndex].username
+      currentDrawer: room.players[drawerIndex].username,
+      players: room.players // Send updated player list
     });
     
     console.log(`Game started in room ${roomId}`);
