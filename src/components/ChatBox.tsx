@@ -44,7 +44,6 @@ const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess, messages })
       {/* Chat messages area */}
       <div 
         className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[200px]" 
-        ref={messagesEndRef}
       >
         {messages.map((msg) => (
           <div 

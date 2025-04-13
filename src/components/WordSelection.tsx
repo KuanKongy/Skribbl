@@ -34,16 +34,6 @@ const WordSelection: React.FC<WordSelectionProps> = ({ words, onSelect, timeLeft
   }, [words]);
 
   const handleWordSelect = (word: string) => {
-    // Clear the canvas before starting to draw the new word
-    const canvas = document.querySelector('canvas');
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-    }
-    
-    // Then call the parent's onSelect handler
     onSelect(word);
   };
 

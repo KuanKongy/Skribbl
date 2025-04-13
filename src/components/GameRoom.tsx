@@ -321,6 +321,16 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       });
     };
     
+    const onClearCanvas = () => {
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+    };
+    
     checkIfHost();
     socketService.on('room-state', onRoomState);
     socketService.on('game-started', onGameStarted);
@@ -337,6 +347,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     socketService.on('player-left', onPlayerLeft);
     socketService.on('host-changed', onHostChanged);
     socketService.on('error', onError);
+    socketService.on('clear-canvas', onClearCanvas);
     
     return () => {
       socketService.off('room-state', onRoomState);
@@ -354,6 +365,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       socketService.off('player-left', onPlayerLeft);
       socketService.off('host-changed', onHostChanged);
       socketService.off('error', onError);
+      socketService.off('clear-canvas', onClearCanvas);
     };
   }, [roomCode, toast, totalRounds, messages.length, players]);
 

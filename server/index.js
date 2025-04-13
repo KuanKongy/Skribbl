@@ -247,7 +247,8 @@ io.on('connection', (socket) => {
     // Check if this is a correct guess
     const isCorrectGuess = room.currentWord && 
                         message.toLowerCase().trim() === room.currentWord.toLowerCase() &&
-                        !player.isDrawing; // Drawer can't guess
+                        !player.isDrawing && 
+                        !player.hasGuessedCorrectly; // Don't count if already guessed
     
     if (isCorrectGuess) {
       // Mark player as having guessed correctly
@@ -395,6 +396,9 @@ function handleWordSelected(roomId, drawerId, word) {
   
   // Tell drawer that they can now draw with the word
   io.to(drawerId).emit('your-turn', { word });
+  
+  // Clear the canvas for everyone
+  io.to(roomId).emit('clear-canvas');
   
   // System message for chat
   const systemMsg = {
