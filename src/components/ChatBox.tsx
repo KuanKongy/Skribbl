@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,7 +47,10 @@ const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess, messages })
         ref={messagesEndRef}
       >
         {messages.map((msg) => (
-          <div key={msg.id} className="text-sm">
+          <div 
+            key={msg.id} 
+            className={`text-sm ${msg.type === 'system' ? 'text-gray-500 dark:text-gray-400 italic' : ''} ${msg.type === 'correct-guess' ? 'text-green-600 dark:text-green-400 font-semibold' : ''}`}
+          >
             <span className="font-semibold">{msg.username}:</span> {msg.message}
           </div>
         ))}

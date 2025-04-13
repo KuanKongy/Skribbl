@@ -241,25 +241,14 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
             : p
         )
       );
-    };
-    
-    const onCorrectGuess = (data: any) => {
-      toast({
-        title: "Correct!",
-        description: `You guessed it! The word was: ${data.word}`
-      });
-      setCurrentWord(data.word);
-    };
-    
-    const onGameOver = (data: any) => {
-      setIsGameActive(false);
-      setIsDrawing(false);
-      setPlayers(data.players);
-      setCurrentRound(totalRounds + 1);
-      toast({
-        title: "Game Over",
-        description: `Winner: ${data.players[0]?.username || 'Nobody'} with ${data.players[0]?.score || 0} points!`
-      });
+      
+      const newMessage: ChatMessage = {
+        id: messages.length + 1,
+        username: 'System',
+        message: `${data.username} guessed the word correctly!`,
+        type: 'correct-guess'
+      };
+      setMessages(prev => [...prev, newMessage]);
     };
     
     const onNewMessage = (data: any) => {
@@ -267,7 +256,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
         id: messages.length + 1,
         username: data.username || 'Unknown',
         message: data.message || '',
-        type: data.isSystem ? 'system' : 'normal'
+        type: data.type || (data.isSystem ? 'system' : 'normal')
       };
       setMessages(prev => [...prev, newMessage]);
     };
@@ -343,8 +332,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     socketService.on('turn-ended', onTurnEnded);
     socketService.on('next-turn', onNextTurn);
     socketService.on('player-guessed', onPlayerGuessed);
-    socketService.on('correct-guess', onCorrectGuess);
-    socketService.on('game-over', onGameOver);
     socketService.on('new-message', onNewMessage);
     socketService.on('player-joined', onPlayerJoined);
     socketService.on('player-left', onPlayerLeft);
@@ -362,8 +349,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       socketService.off('turn-ended', onTurnEnded);
       socketService.off('next-turn', onNextTurn);
       socketService.off('player-guessed', onPlayerGuessed);
-      socketService.off('correct-guess', onCorrectGuess);
-      socketService.off('game-over', onGameOver);
       socketService.off('new-message', onNewMessage);
       socketService.off('player-joined', onPlayerJoined);
       socketService.off('player-left', onPlayerLeft);

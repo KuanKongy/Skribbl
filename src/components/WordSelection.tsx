@@ -33,6 +33,20 @@ const WordSelection: React.FC<WordSelectionProps> = ({ words, onSelect, timeLeft
     console.log("WordSelection mounted with words:", words);
   }, [words]);
 
+  const handleWordSelect = (word: string) => {
+    // Clear the canvas before starting to draw the new word
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+    
+    // Then call the parent's onSelect handler
+    onSelect(word);
+  };
+
   return (
     <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center z-20 bg-black/30">
       <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-md w-full animate-fade-in">
@@ -52,7 +66,7 @@ const WordSelection: React.FC<WordSelectionProps> = ({ words, onSelect, timeLeft
           {words.map((word) => (
             <Button
               key={word}
-              onClick={() => onSelect(word)}
+              onClick={() => handleWordSelect(word)}
               variant="outline"
               className="text-lg py-6 hover:bg-blue-50 dark:hover:bg-blue-900 hover:border-primary transition-all dark:text-white dark:border-gray-600"
             >

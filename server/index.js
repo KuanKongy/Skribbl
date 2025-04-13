@@ -257,6 +257,22 @@ io.on('connection', (socket) => {
       const score = Math.floor(room.timeLeft * 10);
       player.score += score;
       
+      // Send a system message to chat announcing the correct guess
+      const correctGuessMsg = {
+        id: uuidv4(),
+        playerId: null,
+        username: 'System',
+        message: `${player.username} guessed the word correctly!`,
+        isSystem: true,
+        type: 'correct-guess'
+      };
+      
+      // Store the message
+      room.messages.push(correctGuessMsg);
+      
+      // Send to all clients in the room
+      io.to(roomId).emit('new-message', correctGuessMsg);
+      
       // Tell everyone this player guessed correctly
       io.to(roomId).emit('player-guessed', { 
         playerId: socket.id,
@@ -288,7 +304,8 @@ io.on('connection', (socket) => {
         playerId: socket.id,
         username: player.username,
         message,
-        isSystem: false
+        isSystem: false,
+        type: 'normal'
       };
       
       // Store the message
@@ -378,6 +395,20 @@ function handleWordSelected(roomId, drawerId, word) {
   
   // Tell drawer that they can now draw with the word
   io.to(drawerId).emit('your-turn', { word });
+  
+  // System message for chat
+  const systemMsg = {
+    id: uuidv4(),
+    playerId: null,
+    username: 'System',
+    message: 'New word selected! Start guessing!',
+    isSystem: true,
+    type: 'system'
+  };
+  
+  // Send system message to chat
+  room.messages.push(systemMsg);
+  io.to(roomId).emit('new-message', systemMsg);
   
   // Start the round timer
   startRoundTimer(roomId);
