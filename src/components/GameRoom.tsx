@@ -253,6 +253,13 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       setMessages(prev => [...prev, newMessage]);
     };
     
+    const onWordHint = (data: any) => {
+      console.log('Word hint received:', data);
+      if (data.hint && !isDrawing) {
+        setCurrentWord(data.hint);
+      }
+    };
+    
     const onPlayerJoined = (data: any) => {
       console.log('Player joined event:', data);
       setPlayers(prev => {
@@ -335,6 +342,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
     socketService.on('next-turn', onNextTurn);
     socketService.on('player-guessed', onPlayerGuessed);
     socketService.on('new-message', onNewMessage);
+    socketService.on('word-hint', onWordHint);
     socketService.on('player-joined', onPlayerJoined);
     socketService.on('player-left', onPlayerLeft);
     socketService.on('host-changed', onHostChanged);
@@ -353,13 +361,14 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
       socketService.off('next-turn', onNextTurn);
       socketService.off('player-guessed', onPlayerGuessed);
       socketService.off('new-message', onNewMessage);
+      socketService.off('word-hint', onWordHint);
       socketService.off('player-joined', onPlayerJoined);
       socketService.off('player-left', onPlayerLeft);
       socketService.off('host-changed', onHostChanged);
       socketService.off('error', onError);
       socketService.off('clear-canvas', onClearCanvas);
     };
-  }, [roomCode, toast, totalRounds, messages.length, players]);
+  }, [roomCode, toast, totalRounds, messages.length, players, isDrawing]);
 
   const getPlayerNameById = useCallback((id: string) => {
     return players.find(p => p.id === id)?.username || 'Unknown';

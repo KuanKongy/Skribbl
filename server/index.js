@@ -67,6 +67,38 @@ function broadcastRoomState(roomId) {
   io.to(roomId).emit('room-state', roomInfo);
 }
 
+// Helper function to reveal a letter in the word
+function revealLetter(word, alreadyRevealed) {
+  if (!word) return '';
+  
+  // If this is the first reveal, start with all underscores
+  let currentMask = alreadyRevealed || '_'.repeat(word.length);
+  
+  // If all letters are revealed, return as is
+  if (!currentMask.includes('_')) return currentMask;
+  
+  // Find positions of underscores
+  const hiddenPositions = [];
+  for (let i = 0; i < currentMask.length; i++) {
+    if (currentMask[i] === '_') {
+      hiddenPositions.push(i);
+    }
+  }
+  
+  // If no hidden positions, return the current mask
+  if (hiddenPositions.length === 0) return currentMask;
+  
+  // Select a random hidden position to reveal
+  const randomIndex = Math.floor(Math.random() * hiddenPositions.length);
+  const positionToReveal = hiddenPositions[randomIndex];
+  
+  // Create a new mask with the revealed letter
+  const newMask = currentMask.split('');
+  newMask[positionToReveal] = word[positionToReveal];
+  
+  return newMask.join('');
+}
+
 // Socket.io events
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
@@ -379,6 +411,8 @@ function handleWordSelected(roomId, drawerId, word) {
   console.log(`Word "${word}" selected in room ${roomId} by drawer ${drawerId}`);
   room.currentWord = word;
   room.timeLeft = 60;
+  room.revealedWord = '_'.repeat(word.length); // Initialize the revealed word
+  room.lastRevealTime = Date.now(); // Track when we last revealed a letter
   
   // Reset hasGuessedCorrectly for all players
   room.players.forEach(player => {
@@ -428,8 +462,27 @@ function startRoundTimer(roomId) {
     clearInterval(room.timerInterval);
   }
   
+  // Get reveal timings - at 1/4, 1/2, and 3/4 of the total time
+  const totalTime = 60;
+  const revealTimes = [45, 30, 15]; // Reveal at 15, 30, 45 seconds (when time left is these values)
+  
   room.timerInterval = setInterval(() => {
     room.timeLeft -= 1;
+    
+    // Check if it's time to reveal a letter
+    if (revealTimes.includes(room.timeLeft)) {
+      // Reveal a new letter
+      room.revealedWord = revealLetter(room.currentWord, room.revealedWord);
+      
+      // Send the updated revealed word to all players except the drawer
+      room.players.forEach(player => {
+        if (!player.isDrawing) {
+          io.to(player.id).emit('word-hint', { 
+            hint: room.revealedWord 
+          });
+        }
+      });
+    }
     
     // Update clients about time
     io.to(roomId).emit('time-update', { timeLeft: room.timeLeft });
