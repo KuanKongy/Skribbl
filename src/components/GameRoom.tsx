@@ -241,14 +241,6 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
             : p
         )
       );
-      
-      const newMessage: ChatMessage = {
-        id: messages.length + 1,
-        username: 'System',
-        message: `${data.username} guessed the word correctly!`,
-        type: 'correct-guess'
-      };
-      setMessages(prev => [...prev, newMessage]);
     };
     
     const onNewMessage = (data: any) => {
