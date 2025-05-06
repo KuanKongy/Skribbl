@@ -291,7 +291,7 @@ const LobbyRoom: React.FC<LobbyRoomProps> = ({ onStartGame }) => {
       <Card className="w-full max-w-md animate-fade-in dark:bg-gray-800 dark:border-gray-700">
         <CardHeader>
           <div className="flex items-center justify-center mb-4">
-            <h1 className="text-3xl font-bold blue-gradient-text">Sketch & Guess</h1>
+            <h1 className="text-3xl font-bold blue-gradient-text">Skribbl</h1>
             <Button 
               variant="outline" 
               size="icon" 

@@ -46,6 +46,7 @@ function getRandomWords(count) {
 // Helper function to find next player to draw
 function getNextDrawer(room) {
   const { players, currentDrawerIndex } = room;
+  if (players.length <= 1) return null; // Can't proceed with only 1 player
   let nextIndex = (currentDrawerIndex + 1) % players.length;
   return { nextIndex, nextDrawerId: players[nextIndex].id };
 }
@@ -241,6 +242,13 @@ io.on('connection', (socket) => {
     // Start a 20-second timer for word selection
     clearTimeout(room.wordSelectionTimer);
     room.wordSelectionTimer = setTimeout(() => {
+      const drawer = room.players[drawerIndex];
+
+      if (!drawer) {
+        console.log(`Drawer not found in room ${roomId}. Possibly disconnected. Skipping word selection.`);
+        return;
+      }
+
       // If word not selected after 20 seconds, auto-select
       if (!room.currentWord) {
         const randomWord = wordOptions[Math.floor(Math.random() * wordOptions.length)];
@@ -505,7 +513,18 @@ function startRoundTimer(roomId) {
 // Handle next turn or end the game
 function handleNextTurn(roomId) {
   const room = rooms[roomId];
-  if (!room) return;
+  if (!room || room.players.length <= 1) {
+    io.to(roomId).emit('game-ended', { message: 'Not enough players to continue.' });
+    
+    if (room) {
+      room.gameActive = false;
+    }
+  
+    return;
+  }
+
+  const nextDrawer = getNextDrawer(room);
+  if (!nextDrawer) return;
   
   // Clear any existing timers
   if (room.timerInterval) {

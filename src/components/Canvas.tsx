@@ -28,15 +28,36 @@ const Canvas: React.FC<CanvasProps> = ({ isDrawing, onDrawingUpdate }) => {
       if (context) {
         // Adjust canvas size
         const updateSize = () => {
+          const canvas = canvasRef.current;
+          if (!canvas) return;
           const parent = canvas.parentElement;
-          if (parent) {
-            const { width, height } = parent.getBoundingClientRect();
-            canvas.width = width;
-            canvas.height = height;
+          if (!parent) return;
+        
+          // 1. Save current image before resize
+          const prevDataUrl = canvas.toDataURL();
+        
+          // 2. Resize canvas to match parent
+          const { width, height } = parent.getBoundingClientRect();
+          canvas.width = width;
+          canvas.height = height;
+        
+          // 3. Reapply context settings
+          const context = canvas.getContext('2d');
+          if (context) {
             context.lineCap = 'round';
             context.lineJoin = 'round';
+        
+            // 4. Restore previous image
+            const img = new Image();
+            img.src = prevDataUrl;
+            img.onload = () => {
+              context.drawImage(img, 0, 0, width, height);
+            };
+        
+            setCtx(context);
           }
         };
+        
         
         window.addEventListener('resize', updateSize);
         updateSize();
