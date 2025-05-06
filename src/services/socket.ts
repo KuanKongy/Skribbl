@@ -2,7 +2,7 @@
 import { io, Socket } from 'socket.io-client';
 
 // The URL of your WebSocket server
-const SOCKET_URL = 'http://localhost:3001';
+const SOCKET_URL = 'https://skribbl-clone-6782616a44d2.herokuapp.com/'; //https://skribbl-clone-6782616a44d2.herokuapp.com/ http://localhost:3001
 
 // Define a more specific callback type to match Socket.IO's expectations
 type SocketCallback = (...args: any[]) => void;
