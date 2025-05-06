@@ -9,7 +9,7 @@
     "dev": "nodemon index.js"
   },
   "engines": {
-    "node": "14.x"
+    "node": "23.x"
   },
   "dependencies": {
     "cors": "^2.8.5",
