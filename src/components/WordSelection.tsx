@@ -1,27 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Circle } from 'lucide-react';
 
 interface WordSelectionProps {
   words: string[];
-  timeoutSec: number; // how long the server allows for the choice
+  secondsLeft: number; // server-driven countdown (time-update events)
   drawTime: number; // how long the drawing phase will last
   onSelect: (word: string) => void;
 }
 
-// Display-only countdown: if it hits zero the SERVER auto-selects a word —
-// the client never picks on its own (that used to race the server's choice).
-const WordSelection: React.FC<WordSelectionProps> = ({ words, timeoutSec, drawTime, onSelect }) => {
-  const [secondsLeft, setSecondsLeft] = useState(timeoutSec);
-
-  useEffect(() => {
-    setSecondsLeft(timeoutSec);
-    const timer = setInterval(() => {
-      setSecondsLeft((prev) => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [timeoutSec, words]);
-
+// Pure display: the countdown ticks on the SERVER (broadcast every second),
+// and the server auto-selects a word when it reaches zero.
+const WordSelection: React.FC<WordSelectionProps> = ({ words, secondsLeft, drawTime, onSelect }) => {
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-black/30">
       <div className="w-full max-w-md animate-fade-in rounded-lg bg-white p-6 shadow-lg dark:bg-gray-800">
@@ -29,7 +19,7 @@ const WordSelection: React.FC<WordSelectionProps> = ({ words, timeoutSec, drawTi
           <h2 className="text-xl font-bold text-primary dark:text-white">Choose a word to draw</h2>
           <div className="flex items-center font-mono font-bold text-red-500">
             <Circle className="mr-1 h-3 w-3 animate-pulse" />
-            {secondsLeft}s
+            {Math.max(0, secondsLeft)}s
           </div>
         </div>
         <p className="mb-4 text-center text-gray-500 dark:text-gray-400">

@@ -16,14 +16,18 @@ module.exports = {
   // Turn flow
   WORD_SELECT_SECONDS: 20,
   TURN_END_DELAY_MS: 3000,
+  // How long a disconnected player may reconnect (same username, score kept)
+  // before being removed for good.
+  RECONNECT_GRACE_MS: 60000,
 
   // Chat
   MAX_MESSAGES: 100,
   MAX_CHAT_LEN: 200,
 
-  // Canvas — logical coordinate space shared by every client
-  CANVAS_WIDTH: 800,
-  CANVAS_HEIGHT: 600,
+  // Canvas — logical coordinate space shared by every client.
+  // Must match CANVAS_WIDTH/HEIGHT in src/lib/protocol.ts.
+  CANVAS_WIDTH: 1000,
+  CANVAS_HEIGHT: 700,
   MIN_BRUSH_SIZE: 1,
   MAX_BRUSH_SIZE: 40,
 

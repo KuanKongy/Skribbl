@@ -22,7 +22,9 @@ class RoomManager {
 
   create(settings) {
     const code = this.generateRoomCode();
-    const room = new GameRoom(this.io, code, settings);
+    // onEmpty lets the room self-destruct when the last player is removed by
+    // an internal timer (reconnect grace expiry), not just by a socket event.
+    const room = new GameRoom(this.io, code, settings, () => this.destroy(code));
     this.rooms.set(code, room);
     return room;
   }

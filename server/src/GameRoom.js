@@ -9,13 +9,19 @@ const { pickWordOptions, maskWord, revealLetter, levenshtein } = require('./word
 // Phases: lobby -> choosing -> drawing -> turn-end -> (choosing | game-over)
 // Every transition method is phase-gated, so a stale timer or a duplicate
 // event can never double-advance a turn.
+//
+// Disconnects during a game are forgiving: the player is marked disconnected
+// and kept (with their score) for RECONNECT_GRACE_MS. Rejoining with the
+// same username within that window restores them. Explicit leave-room
+// removes them immediately.
 class GameRoom {
-  constructor(io, id, settings) {
+  constructor(io, id, settings, onEmpty) {
     this.io = io;
     this.id = id;
     this.settings = settings; // { rounds, drawTime }
+    this.onEmpty = onEmpty || (() => {});
     this.hostId = null;
-    this.players = []; // { id, username, score, isDrawing, hasGuessedCorrectly }
+    this.players = []; // { id, username, score, isDrawing, hasGuessedCorrectly, connected }
     this.phase = 'lobby';
     this.currentRound = 0;
     this.totalRounds = settings.rounds;
@@ -29,7 +35,9 @@ class GameRoom {
     this.turnScores = {}; // playerId -> points gained this turn
     this.canvasOps = [];
     this.messages = [];
-    this.timers = { wordSelect: null, tick: null, turnEnd: null };
+    this.waitingForPlayers = false; // paused at a turn boundary, hoping for reconnects
+    this.timers = { tick: null, turnEnd: null };
+    this.graceTimers = new Map(); // playerId -> reconnect-grace timeout
     this.turnId = 0; // incremented every turn; timer callbacks no-op on mismatch
   }
 
@@ -48,6 +56,7 @@ class GameRoom {
       timeLeft: this.timeLeft,
       mask: this.mask,
       wordLength: this.currentWord ? this.currentWord.length : 0,
+      waitingForPlayers: this.waitingForPlayers,
     };
   }
 
@@ -63,15 +72,39 @@ class GameRoom {
     return this.phase !== 'lobby' && this.phase !== 'game-over';
   }
 
+  connectedPlayers() {
+    return this.players.filter((p) => p.connected);
+  }
+
   // ---- Players ----
 
-  // Returns { ok: true, player } or { ok: false, code }.
+  // Returns { ok: true, player, reconnected? } or { ok: false, code, message }.
   addPlayer(socketId, username) {
+    const existing = this.players.find(
+      (p) => p.username.toLowerCase() === username.toLowerCase()
+    );
+
+    // Reconnection: same name, previous socket gone -> restore the player.
+    if (existing && !existing.connected) {
+      const oldId = existing.id;
+      this.clearGraceTimer(oldId);
+      existing.id = socketId;
+      existing.connected = true;
+      if (this.drawnThisRound.delete(oldId)) this.drawnThisRound.add(socketId);
+      if (this.turnScores[oldId] !== undefined) {
+        this.turnScores[socketId] = this.turnScores[oldId];
+        delete this.turnScores[oldId];
+      }
+      if (this.hostId === oldId) this.hostId = socketId;
+      if (this.drawerId === oldId) this.drawerId = socketId;
+      return { ok: true, player: existing, reconnected: true };
+    }
+
+    if (existing) {
+      return { ok: false, code: 'NAME_TAKEN', message: 'That name is already taken in this room.' };
+    }
     if (this.players.length >= config.MAX_PLAYERS) {
       return { ok: false, code: 'ROOM_FULL', message: 'This room is full.' };
-    }
-    if (this.players.some((p) => p.username.toLowerCase() === username.toLowerCase())) {
-      return { ok: false, code: 'NAME_TAKEN', message: 'That name is already taken in this room.' };
     }
     const player = {
       id: socketId,
@@ -79,42 +112,96 @@ class GameRoom {
       score: 0,
       isDrawing: false,
       hasGuessedCorrectly: false,
+      connected: true,
     };
     this.players.push(player);
     if (!this.hostId) this.hostId = socketId;
     return { ok: true, player };
   }
 
-  // Returns { empty: boolean } so the caller knows to destroy the room.
+  // Socket dropped (tab closed, network hiccup). During a game the player is
+  // kept for a grace window; in lobby/game-over they're removed right away.
+  // Returns { empty: boolean }.
+  handleDisconnect(socketId) {
+    const player = this.getPlayer(socketId);
+    if (!player) return { empty: this.players.length === 0 };
+    if (!this.inGame) return this.removePlayer(socketId);
+
+    player.connected = false;
+    const graceSec = Math.round(config.RECONNECT_GRACE_MS / 1000);
+    this.systemMessage(`${player.username} lost connection — they have ${graceSec}s to rejoin.`);
+
+    if (socketId === this.drawerId && (this.phase === 'choosing' || this.phase === 'drawing')) {
+      this.endTurn('drawer-left');
+    } else if (this.phase === 'drawing') {
+      const activeGuessers = this.players.filter((p) => p.connected && !p.isDrawing);
+      if (activeGuessers.length === 0) this.endTurn('no-guessers');
+      else if (this.allGuessed()) this.endTurn('all-guessed');
+    }
+
+    const timer = setTimeout(() => {
+      this.graceTimers.delete(socketId);
+      this.removePlayer(socketId);
+    }, config.RECONNECT_GRACE_MS);
+    this.graceTimers.set(socketId, timer);
+
+    this.broadcastState();
+    return { empty: false };
+  }
+
+  clearGraceTimer(playerId) {
+    const timer = this.graceTimers.get(playerId);
+    if (timer) {
+      clearTimeout(timer);
+      this.graceTimers.delete(playerId);
+    }
+  }
+
+  // Permanent removal (explicit leave, or reconnect grace expired).
+  // Returns { empty: boolean }.
   removePlayer(socketId) {
     const idx = this.players.findIndex((p) => p.id === socketId);
     if (idx === -1) return { empty: this.players.length === 0 };
     const [player] = this.players.splice(idx, 1);
+    this.clearGraceTimer(socketId);
     this.drawnThisRound.delete(socketId);
     delete this.turnScores[socketId];
 
-    if (this.players.length === 0) return { empty: true };
+    if (this.players.length === 0) {
+      this.onEmpty();
+      return { empty: true };
+    }
 
     let newHostId;
     if (this.hostId === socketId) {
-      this.hostId = this.players[0].id;
+      this.hostId = (this.connectedPlayers()[0] || this.players[0]).id;
       newHostId = this.hostId;
     }
     this.io.to(this.id).emit('player-left', { playerId: socketId, username: player.username, newHostId });
     this.systemMessage(`${player.username} left the room.`);
 
     if (this.inGame && this.players.length < config.MIN_PLAYERS) {
+      // Even counting reconnectable players there's no game to come back to.
       this.systemMessage('Not enough players — ending the game.');
       this.finishGame();
     } else if (this.inGame && socketId === this.drawerId && this.phase !== 'turn-end') {
       this.endTurn('drawer-left');
-    } else if (this.phase === 'drawing' && this.allGuessed()) {
-      // The leaver may have been the last player still guessing.
-      this.endTurn('all-guessed');
+    } else if (this.phase === 'drawing') {
+      const activeGuessers = this.players.filter((p) => p.connected && !p.isDrawing);
+      if (activeGuessers.length === 0) this.endTurn('no-guessers');
+      else if (this.allGuessed()) this.endTurn('all-guessed');
     }
 
     this.broadcastState();
     return { empty: false };
+  }
+
+  // Kick the game back into motion if it was paused waiting for players.
+  // Called after any successful join/reconnect.
+  maybeResume() {
+    if (this.phase === 'turn-end' && !this.timers.turnEnd) {
+      this.advance();
+    }
   }
 
   // ---- Game flow ----
@@ -124,7 +211,7 @@ class GameRoom {
     if (this.phase !== 'lobby' && this.phase !== 'game-over') {
       return { ok: false, code: 'BAD_STATE', message: 'The game is already running.' };
     }
-    if (this.players.length < config.MIN_PLAYERS) {
+    if (this.connectedPlayers().length < config.MIN_PLAYERS) {
       return { ok: false, code: 'NOT_ENOUGH_PLAYERS', message: `You need at least ${config.MIN_PLAYERS} players to start.` };
     }
     this.players.forEach((p) => {
@@ -135,7 +222,7 @@ class GameRoom {
     this.currentRound = 1;
     this.drawnThisRound.clear();
     this.systemMessage('The game has started!');
-    this.beginTurn(this.players[0]);
+    this.beginTurn(this.connectedPlayers()[0]);
     return { ok: true };
   }
 
@@ -146,10 +233,11 @@ class GameRoom {
     const turnId = this.turnId;
 
     this.phase = 'choosing';
+    this.waitingForPlayers = false;
     this.currentWord = null;
     this.mask = '';
     this.revealsDone = 0;
-    this.timeLeft = this.settings.drawTime;
+    this.timeLeft = config.WORD_SELECT_SECONDS;
     this.turnScores = {};
     this.canvasOps = [];
     this.drawerId = drawer.id;
@@ -159,7 +247,6 @@ class GameRoom {
       p.hasGuessedCorrectly = false;
     });
     this.wordOptions = pickWordOptions(3);
-    this.wordSelectDeadline = Date.now() + config.WORD_SELECT_SECONDS * 1000;
 
     this.io.to(this.id).emit('turn-started', {
       round: this.currentRound,
@@ -169,25 +256,23 @@ class GameRoom {
     });
     this.io.to(drawer.id).emit('select-word', {
       words: this.wordOptions,
-      timeoutSec: config.WORD_SELECT_SECONDS,
+      timeoutSec: this.timeLeft,
     });
     this.io.to(this.id).emit('canvas-cleared');
     this.broadcastState();
 
-    this.timers.wordSelect = setTimeout(() => {
+    // ONE server-side clock per turn: counts down word selection during
+    // 'choosing' (auto-picking at zero), then the drawing time.
+    this.timers.tick = setInterval(() => {
       if (this.turnId !== turnId) return;
-      const word = this.wordOptions[Math.floor(Math.random() * this.wordOptions.length)];
-      this.chooseWord(word);
-    }, config.WORD_SELECT_SECONDS * 1000);
+      this.tick();
+    }, 1000);
   }
 
   // Returns false if the choice is not valid right now (wrong phase / word).
   chooseWord(word) {
     if (this.phase !== 'choosing') return false;
     if (!this.wordOptions.includes(word)) return false;
-
-    clearTimeout(this.timers.wordSelect);
-    this.timers.wordSelect = null;
 
     this.phase = 'drawing';
     this.currentWord = word;
@@ -205,21 +290,23 @@ class GameRoom {
     if (this.drawerId) this.io.to(this.drawerId).emit('your-word', { word });
     this.systemMessage(`${drawer ? drawer.username : 'The drawer'} is drawing now — start guessing!`);
     this.broadcastState();
-
-    const turnId = this.turnId;
-    this.timers.tick = setInterval(() => {
-      if (this.turnId !== turnId) return;
-      this.tick();
-    }, 1000);
     return true;
   }
 
   tick() {
-    if (this.phase !== 'drawing') return;
-    this.timeLeft -= 1;
-    this.maybeRevealHint();
-    this.io.to(this.id).emit('time-update', { timeLeft: this.timeLeft });
-    if (this.timeLeft <= 0) this.endTurn('time');
+    if (this.phase === 'choosing') {
+      this.timeLeft -= 1;
+      this.io.to(this.id).emit('time-update', { timeLeft: this.timeLeft });
+      if (this.timeLeft <= 0) {
+        const word = this.wordOptions[Math.floor(Math.random() * this.wordOptions.length)];
+        this.chooseWord(word);
+      }
+    } else if (this.phase === 'drawing') {
+      this.timeLeft -= 1;
+      this.maybeRevealHint();
+      this.io.to(this.id).emit('time-update', { timeLeft: this.timeLeft });
+      if (this.timeLeft <= 0) this.endTurn('time');
+    }
   }
 
   maybeRevealHint() {
@@ -236,26 +323,32 @@ class GameRoom {
     });
   }
 
+  // True when every connected guesser has the word (and there is at least one).
   allGuessed() {
-    return this.players.every((p) => p.isDrawing || p.hasGuessedCorrectly);
+    const guessers = this.players.filter((p) => p.connected && !p.isDrawing);
+    return guessers.length > 0 && guessers.every((p) => p.hasGuessedCorrectly);
   }
 
   // Seconds the drawer still has to pick a word (for late-mounting clients).
   wordSelectSecondsLeft() {
-    if (!this.wordSelectDeadline) return config.WORD_SELECT_SECONDS;
-    return Math.max(1, Math.ceil((this.wordSelectDeadline - Date.now()) / 1000));
+    return this.phase === 'choosing' ? this.timeLeft : config.WORD_SELECT_SECONDS;
   }
 
-  // reason: 'time' | 'all-guessed' | 'drawer-left'
+  // reason: 'time' | 'all-guessed' | 'drawer-left' | 'no-guessers'
   endTurn(reason) {
-    const validFrom = this.phase === 'drawing' || (this.phase === 'choosing' && reason === 'drawer-left');
+    const validFrom =
+      this.phase === 'drawing' || (this.phase === 'choosing' && reason === 'drawer-left');
     if (!validFrom) return;
     this.clearAllTimers();
 
     const drawer = this.getPlayer(this.drawerId);
     if (drawer && reason !== 'drawer-left' && this.players.length > 1) {
-      const guessers = this.players.filter((p) => p.hasGuessedCorrectly).length;
-      const gained = Math.round((config.DRAWER_MAX_SCORE * guessers) / (this.players.length - 1));
+      const guessed = this.players.filter((p) => p.hasGuessedCorrectly).length;
+      // Denominator: players who had a real chance to guess this turn.
+      const eligible = this.players.filter(
+        (p) => p.id !== this.drawerId && (p.connected || p.hasGuessedCorrectly)
+      ).length;
+      const gained = eligible > 0 ? Math.round((config.DRAWER_MAX_SCORE * guessed) / eligible) : 0;
       if (gained > 0) {
         drawer.score += gained;
         this.turnScores[drawer.id] = gained;
@@ -271,19 +364,37 @@ class GameRoom {
     this.io.to(this.id).emit('turn-ended', { word: this.currentWord, reason, scores });
     this.broadcastState();
 
-    this.timers.turnEnd = setTimeout(() => this.advance(), config.TURN_END_DELAY_MS);
+    this.timers.turnEnd = setTimeout(() => {
+      this.timers.turnEnd = null;
+      this.advance();
+    }, config.TURN_END_DELAY_MS);
   }
 
   advance() {
     if (this.phase !== 'turn-end') return;
+
     if (this.players.length < config.MIN_PLAYERS) return this.finishGame();
 
-    let next = this.players.find((p) => !this.drawnThisRound.has(p.id));
+    const connected = this.connectedPlayers();
+    if (connected.length < config.MIN_PLAYERS) {
+      // Someone may still reconnect within their grace window — pause here
+      // instead of killing the game. Resumes via maybeResume(), or ends when
+      // grace expiry drops the roster below the minimum.
+      if (!this.waitingForPlayers) {
+        this.waitingForPlayers = true;
+        this.systemMessage('Waiting for players to reconnect…');
+        this.broadcastState();
+      }
+      return;
+    }
+    this.waitingForPlayers = false;
+
+    let next = connected.find((p) => !this.drawnThisRound.has(p.id));
     if (!next) {
       this.currentRound += 1;
       this.drawnThisRound.clear();
       if (this.currentRound > this.totalRounds) return this.finishGame();
-      next = this.players[0];
+      next = connected[0];
     }
     this.beginTurn(next);
   }
@@ -291,12 +402,18 @@ class GameRoom {
   finishGame() {
     this.clearAllTimers();
     this.phase = 'game-over';
+    this.waitingForPlayers = false;
     this.drawerId = null;
     this.currentWord = null;
     this.mask = '';
     this.players.forEach((p) => {
       p.isDrawing = false;
     });
+    // A disconnected host can't click Play Again — hand it to someone present.
+    const host = this.getPlayer(this.hostId);
+    if ((!host || !host.connected) && this.connectedPlayers().length > 0) {
+      this.hostId = this.connectedPlayers()[0].id;
+    }
     const sorted = [...this.players].sort((a, b) => b.score - a.score);
     this.io.to(this.id).emit('game-over', { players: sorted });
     this.broadcastState();
@@ -407,10 +524,8 @@ class GameRoom {
   // ---- Timers ----
 
   clearAllTimers() {
-    clearTimeout(this.timers.wordSelect);
     clearInterval(this.timers.tick);
     clearTimeout(this.timers.turnEnd);
-    this.timers.wordSelect = null;
     this.timers.tick = null;
     this.timers.turnEnd = null;
   }
@@ -419,6 +534,8 @@ class GameRoom {
   // nothing keeps ticking against a deleted room.
   dispose() {
     this.clearAllTimers();
+    for (const timer of this.graceTimers.values()) clearTimeout(timer);
+    this.graceTimers.clear();
     this.turnId += 1; // invalidate any in-flight callbacks
   }
 }

@@ -42,7 +42,7 @@ const COLOR_OPTIONS = [
   '#808080', '#C0C0C0', '#FFC0CB', '#800000', '#008000',
 ];
 
-// The offscreen 800x600 canvas is the authoritative bitmap on every client;
+// The offscreen logical-resolution canvas is the authoritative bitmap on every client;
 // the visible canvas is just a scaled blit of it. That keeps all clients
 // pixel-identical regardless of window size and makes resizing lossless.
 const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ canDraw }, ref) => {
@@ -79,7 +79,9 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ canDraw }, ref) => {
     ctx.drawImage(off, 0, 0, display.width, display.height);
   }, []);
 
-  // Fit the visible canvas inside its container at a fixed 4:3 aspect.
+  // Fit the visible canvas inside its container at the logical aspect ratio,
+  // capped at 1:1 with the logical resolution — the canvas never upscales,
+  // so it stays crisp and its size is stable across window resizes.
   useEffect(() => {
     const fit = () => {
       const container = containerRef.current;
@@ -88,7 +90,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ canDraw }, ref) => {
       const cw = container.clientWidth;
       const ch = container.clientHeight;
       if (cw === 0 || ch === 0) return;
-      const scale = Math.min(cw / CANVAS_WIDTH, ch / CANVAS_HEIGHT);
+      const scale = Math.min(1, cw / CANVAS_WIDTH, ch / CANVAS_HEIGHT);
       const w = Math.max(1, Math.floor(CANVAS_WIDTH * scale));
       const h = Math.max(1, Math.floor(CANVAS_HEIGHT * scale));
       if (display.width !== w || display.height !== h) {
@@ -262,80 +264,89 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ canDraw }, ref) => {
 
   return (
     <div className="flex h-full w-full flex-col gap-2">
-      {canDraw && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-white p-2 shadow-sm dark:bg-gray-800">
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant={tool === 'brush' ? 'default' : 'outline'}
-              onClick={() => setTool('brush')}
-              title="Brush"
-            >
-              <Brush className="h-4 w-4" />
-              <span className="sr-only lg:not-sr-only lg:ml-1">Brush</span>
-            </Button>
-            <Button
-              size="sm"
-              variant={tool === 'eraser' ? 'default' : 'outline'}
-              onClick={() => setTool('eraser')}
-              title="Eraser"
-            >
-              <Eraser className="h-4 w-4" />
-              <span className="sr-only lg:not-sr-only lg:ml-1">Eraser</span>
-            </Button>
-            <Button
-              size="sm"
-              variant={tool === 'fill' ? 'default' : 'outline'}
-              onClick={() => setTool('fill')}
-              title="Fill"
-            >
-              <PaintBucket className="h-4 w-4" />
-              <span className="sr-only lg:not-sr-only lg:ml-1">Fill</span>
-            </Button>
-            <Button size="sm" variant="outline" onClick={handleUndo} title="Undo">
-              <Undo2 className="h-4 w-4" />
-              <span className="sr-only lg:not-sr-only lg:ml-1">Undo</span>
-            </Button>
-            <Button size="sm" variant="outline" onClick={handleClear} title="Clear canvas">
-              <Trash2 className="h-4 w-4" />
-              <span className="sr-only lg:not-sr-only lg:ml-1">Clear</span>
-            </Button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1">
-            {COLOR_OPTIONS.map((c) => (
-              <button
-                key={c}
-                className={`h-6 w-6 rounded-full border-2 transition-transform ${
-                  color === c
-                    ? 'scale-110 border-gray-800 dark:border-white'
-                    : 'border-gray-300 dark:border-gray-600'
-                }`}
-                style={{ backgroundColor: c }}
-                onClick={() => setColor(c)}
-                title={c}
-              />
-            ))}
-            <input
-              type="range"
-              min="1"
-              max="30"
-              value={brushSize}
-              onChange={(e) => setBrushSize(parseInt(e.target.value))}
-              className="ml-2 w-20"
-              title="Brush size"
-            />
-          </div>
-        </div>
-      )}
-
+      {/* The toolbar is always rendered (layout stays stable across turns);
+          it is merely disabled for everyone but the active drawer. */}
       <div
-        ref={containerRef}
-        className="canvas-container relative flex min-h-0 flex-1 items-center justify-center"
+        className={`flex flex-wrap items-center gap-2 rounded-lg bg-white p-2 shadow-sm transition-opacity dark:bg-gray-800 ${
+          canDraw ? '' : 'pointer-events-none opacity-50'
+        }`}
+        aria-disabled={!canDraw}
       >
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant={tool === 'brush' ? 'default' : 'outline'}
+            onClick={() => setTool('brush')}
+            title="Brush"
+            disabled={!canDraw}
+          >
+            <Brush className="h-4 w-4" />
+            <span className="sr-only lg:not-sr-only lg:ml-1">Brush</span>
+          </Button>
+          <Button
+            size="sm"
+            variant={tool === 'eraser' ? 'default' : 'outline'}
+            onClick={() => setTool('eraser')}
+            title="Eraser"
+            disabled={!canDraw}
+          >
+            <Eraser className="h-4 w-4" />
+            <span className="sr-only lg:not-sr-only lg:ml-1">Eraser</span>
+          </Button>
+          <Button
+            size="sm"
+            variant={tool === 'fill' ? 'default' : 'outline'}
+            onClick={() => setTool('fill')}
+            title="Fill"
+            disabled={!canDraw}
+          >
+            <PaintBucket className="h-4 w-4" />
+            <span className="sr-only lg:not-sr-only lg:ml-1">Fill</span>
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleUndo} title="Undo" disabled={!canDraw}>
+            <Undo2 className="h-4 w-4" />
+            <span className="sr-only lg:not-sr-only lg:ml-1">Undo</span>
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleClear} title="Clear canvas" disabled={!canDraw}>
+            <Trash2 className="h-4 w-4" />
+            <span className="sr-only lg:not-sr-only lg:ml-1">Clear</span>
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1">
+          {COLOR_OPTIONS.map((c) => (
+            <button
+              key={c}
+              className={`h-6 w-6 rounded-full border-2 transition-transform ${
+                color === c
+                  ? 'scale-110 border-gray-800 dark:border-white'
+                  : 'border-gray-300 dark:border-gray-600'
+              }`}
+              style={{ backgroundColor: c }}
+              onClick={() => setColor(c)}
+              title={c}
+              disabled={!canDraw}
+            />
+          ))}
+          <input
+            type="range"
+            min="1"
+            max="30"
+            value={brushSize}
+            onChange={(e) => setBrushSize(parseInt(e.target.value))}
+            className="ml-2 w-20"
+            title="Brush size"
+            disabled={!canDraw}
+          />
+        </div>
+      </div>
+
+      {/* Transparent container: only the white canvas itself is drawable, so
+          there is never a white margin that LOOKS drawable but isn't. */}
+      <div ref={containerRef} className="relative flex min-h-0 flex-1 items-center justify-center">
         <canvas
           ref={displayRef}
-          className={`touch-none rounded-lg bg-white shadow-inner ${
+          className={`touch-none rounded-lg border border-gray-200 bg-white shadow-md dark:border-gray-700 ${
             canDraw ? (tool === 'fill' ? 'cursor-cell' : 'cursor-crosshair') : 'cursor-default'
           }`}
           onPointerDown={handlePointerDown}

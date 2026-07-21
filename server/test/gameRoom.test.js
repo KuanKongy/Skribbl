@@ -233,7 +233,7 @@ test('dispose kills all timers — nothing fires against a destroyed room', () =
   room.startGame();
   room.chooseWord(room.wordOptions[0]); // tick interval armed
   room.dispose();
-  assert.deepStrictEqual(room.timers, { wordSelect: null, tick: null, turnEnd: null });
+  assert.deepStrictEqual(room.timers, { tick: null, turnEnd: null });
 
   const emitCount = io.emits.length;
   mock.timers.tick(600000);
@@ -347,6 +347,87 @@ test('canvas history respects MAX_CANVAS_OPS and strokes cap their points', () =
   }
   assert.strictEqual(room.canvasOps.length, 1);
   assert.ok(room.canvasOps[0].points.length <= config.MAX_STROKE_POINTS);
+});
+
+test('choosing countdown is server-driven via time-update', () => {
+  const { io, room } = makeRoom(2);
+  room.startGame();
+  const before = eventsOf(io, 'time-update').length;
+  mock.timers.tick(3000);
+  const updates = eventsOf(io, 'time-update').slice(before);
+  assert.strictEqual(updates.length, 3);
+  assert.strictEqual(updates[2].payload.timeLeft, config.WORD_SELECT_SECONDS - 3);
+});
+
+test('tab close with 2 players pauses the game instead of ending it', () => {
+  const { io, room } = makeRoom(2, { rounds: 3, drawTime: 60 });
+  room.startGame();
+  room.chooseWord(room.wordOptions[0]);
+
+  // The only guesser's socket drops (tab closed) — NOT an explicit leave.
+  room.handleDisconnect('p1');
+  assert.notStrictEqual(room.phase, 'game-over', 'game must not end immediately');
+  assert.strictEqual(room.players.length, 2, 'player is kept during grace');
+  const ended = lastEventOf(io, 'turn-ended');
+  assert.strictEqual(ended.payload.reason, 'no-guessers');
+
+  mock.timers.tick(config.TURN_END_DELAY_MS);
+  assert.strictEqual(room.phase, 'turn-end', 'paused at the turn boundary');
+  assert.strictEqual(room.waitingForPlayers, true);
+  assert.strictEqual(eventsOf(io, 'game-over').length, 0);
+});
+
+test('reconnecting within the grace window restores the player and resumes', () => {
+  const { room } = makeRoom(2, { rounds: 3, drawTime: 60 });
+  room.startGame();
+  room.chooseWord(room.wordOptions[0]);
+  const word = room.currentWord;
+  room.handleChat('p1', word); // p1 has points before dropping
+  mock.timers.tick(config.TURN_END_DELAY_MS); // all-guessed -> next turn (p1 drawing)
+  assert.strictEqual(room.drawerId, 'p1');
+
+  const scoreBefore = room.getPlayer('p1').score;
+  room.handleDisconnect('p1'); // drawer drops -> drawer-left, then pause
+  mock.timers.tick(config.TURN_END_DELAY_MS);
+  assert.strictEqual(room.waitingForPlayers, true);
+
+  // Same username, new socket id — this is what join-room does on reconnect.
+  const result = room.addPlayer('p1-new-socket', 'Player1');
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.reconnected, true);
+  assert.strictEqual(result.player.score, scoreBefore, 'score survives reconnect');
+
+  room.maybeResume();
+  assert.strictEqual(room.phase, 'choosing', 'game resumed');
+  assert.strictEqual(room.waitingForPlayers, false);
+});
+
+test('grace expiry removes the player and only then ends a 2-player game', () => {
+  const { io, room } = makeRoom(2, { rounds: 3, drawTime: 60 });
+  room.startGame();
+  room.chooseWord(room.wordOptions[0]);
+  room.handleDisconnect('p1');
+  mock.timers.tick(config.TURN_END_DELAY_MS);
+  assert.strictEqual(eventsOf(io, 'game-over').length, 0);
+
+  mock.timers.tick(config.RECONNECT_GRACE_MS);
+  assert.strictEqual(room.players.length, 1);
+  assert.strictEqual(room.phase, 'game-over');
+  assert.strictEqual(eventsOf(io, 'game-over').length, 1);
+});
+
+test('disconnected drawer keeps their seat; rotation skips them until they return', () => {
+  const { io, room } = makeRoom(3, { rounds: 3, drawTime: 60 });
+  room.startGame();
+  assert.strictEqual(room.drawerId, 'p0');
+  room.handleDisconnect('p0'); // drawer's tab closes during choosing
+  const ended = lastEventOf(io, 'turn-ended');
+  assert.strictEqual(ended.payload.reason, 'drawer-left');
+  assert.strictEqual(room.players.length, 3, 'p0 kept during grace');
+
+  mock.timers.tick(config.TURN_END_DELAY_MS);
+  assert.strictEqual(room.phase, 'choosing');
+  assert.strictEqual(room.drawerId, 'p1', 'next connected player draws');
 });
 
 test('canvas history clears between turns', () => {

@@ -1,5 +1,5 @@
 // Pure canvas rendering for DrawOps. Everything here operates on the fixed
-// 800x600 logical canvas, so every client rasterizes identically — strokes
+// fixed-resolution logical canvas, so every client rasterizes identically — strokes
 // AND flood fills produce the same pixels everywhere.
 import { CANVAS_WIDTH, CANVAS_HEIGHT, DrawOp, StrokeOp } from './protocol';
 

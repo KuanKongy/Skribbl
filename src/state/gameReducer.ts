@@ -26,11 +26,11 @@ export interface GameState {
   mask: string; // masked hint for guessers
   wordLength: number;
   wordOptions: string[];
-  wordSelectTimeout: number;
   timeLeft: number;
   messages: ChatMessage[];
   turnEnd: TurnEndedPayload | null; // present while the turn-end overlay shows
   finalPlayers: Player[] | null;
+  waitingForPlayers: boolean;
 }
 
 export type GameAction =
@@ -64,7 +64,6 @@ export function initGameState(initial: { roomState: RoomState | null; playerId: 
     mask: s?.mask ?? '',
     wordLength: s?.wordLength ?? 0,
     wordOptions: [],
-    wordSelectTimeout: 20,
     timeLeft: s?.timeLeft ?? 0,
     messages: [
       {
@@ -77,6 +76,7 @@ export function initGameState(initial: { roomState: RoomState | null; playerId: 
     ],
     turnEnd: null,
     finalPlayers: null,
+    waitingForPlayers: s?.waitingForPlayers ?? false,
   };
 }
 
@@ -101,6 +101,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         mask: s.mask,
         wordLength: s.wordLength,
         timeLeft: s.timeLeft,
+        waitingForPlayers: s.waitingForPlayers,
         // Leaving turn-end/game-over clears their artifacts.
         turnEnd: s.phase === 'turn-end' ? state.turnEnd : null,
         finalPlayers: s.phase === 'game-over' ? state.finalPlayers : null,
@@ -124,11 +125,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
 
     case 'SELECT_WORD':
-      return {
-        ...state,
-        wordOptions: action.payload.words,
-        wordSelectTimeout: action.payload.timeoutSec,
-      };
+      return { ...state, wordOptions: action.payload.words };
 
     case 'DRAWING_PHASE':
       return {

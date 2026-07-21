@@ -3,8 +3,9 @@
 
 // Logical canvas space — every client draws into this fixed coordinate system
 // and scales it to its own display size, so drawings line up everywhere.
-export const CANVAS_WIDTH = 800;
-export const CANVAS_HEIGHT = 600;
+// Must match server/src/config.js.
+export const CANVAS_WIDTH = 1000;
+export const CANVAS_HEIGHT = 700;
 
 export type Tool = 'brush' | 'eraser';
 
@@ -35,6 +36,9 @@ export interface Player {
   score: number;
   isDrawing: boolean;
   hasGuessedCorrectly: boolean;
+  // False while the player's socket is gone but their reconnect grace window
+  // is still open (they can rejoin with the same name and keep their score).
+  connected: boolean;
 }
 
 export interface GameSettings {
@@ -54,6 +58,9 @@ export interface RoomState {
   timeLeft: number;
   mask: string;
   wordLength: number;
+  // True when the game is paused at a turn boundary because too few players
+  // are connected, hoping someone reconnects.
+  waitingForPlayers: boolean;
 }
 
 export type MessageType = 'normal' | 'system' | 'correct-guess';
@@ -66,7 +73,7 @@ export interface ChatMessage {
   type: MessageType;
 }
 
-export type TurnEndReason = 'time' | 'all-guessed' | 'drawer-left';
+export type TurnEndReason = 'time' | 'all-guessed' | 'drawer-left' | 'no-guessers';
 
 export interface TurnScore {
   playerId: string;

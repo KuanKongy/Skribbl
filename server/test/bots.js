@@ -10,6 +10,7 @@
 // human drawing continuously.
 const { io } = require('socket.io-client');
 const { WORDS } = require('../src/words');
+const { CANVAS_WIDTH, CANVAS_HEIGHT } = require('../src/config');
 
 const roomCode = process.argv[2];
 const botCount = Number(process.argv[3]) || 9;
@@ -63,14 +64,14 @@ function startBot(n) {
   socket.on('your-word', () => {
     // This bot is the drawer: scribble batches at 25/s for the whole turn.
     stopDrawing();
-    let x = Math.random() * 800;
-    let y = Math.random() * 600;
+    let x = Math.random() * CANVAS_WIDTH;
+    let y = Math.random() * CANVAS_HEIGHT;
     strokeId += 1;
     drawTimer = setInterval(() => {
       const points = [];
       for (let i = 0; i < 6; i++) {
-        x = Math.max(0, Math.min(800, x + (Math.random() - 0.5) * 40));
-        y = Math.max(0, Math.min(600, y + (Math.random() - 0.5) * 40));
+        x = Math.max(0, Math.min(CANVAS_WIDTH, x + (Math.random() - 0.5) * 40));
+        y = Math.max(0, Math.min(CANVAS_HEIGHT, y + (Math.random() - 0.5) * 40));
         points.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10]);
       }
       socket.emit('draw-ops', {

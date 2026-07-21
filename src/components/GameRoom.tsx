@@ -79,14 +79,15 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
 
       {/* Main area */}
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto lg:grid-cols-[1fr_320px] lg:overflow-hidden">
-        {/* Canvas column */}
-        <div className="relative flex min-h-[300px] flex-col lg:min-h-0">
+        {/* Canvas column — on stacked (mobile) layouts reserve a good chunk
+            of the viewport for it; on lg the grid row provides the height. */}
+        <div className="relative flex min-h-[60vh] flex-col lg:min-h-0">
           <Canvas ref={canvasRef} canDraw={canDraw} />
 
           {game.phase === 'choosing' && isDrawer && game.wordOptions.length > 0 && (
             <WordSelection
               words={game.wordOptions}
-              timeoutSec={game.wordSelectTimeout}
+              secondsLeft={game.timeLeft}
               drawTime={game.settings.drawTime}
               onSelect={(word) => socketService.selectWord(word)}
             />
@@ -108,6 +109,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                   {game.turnEnd.reason === 'all-guessed' && 'Everyone guessed it!'}
                   {game.turnEnd.reason === 'time' && "Time's up!"}
                   {game.turnEnd.reason === 'drawer-left' && 'The drawer left.'}
+                  {game.turnEnd.reason === 'no-guessers' && 'No guessers left.'}
                 </p>
                 <p className="mt-1 text-2xl font-bold blue-gradient-text">{game.turnEnd.word}</p>
                 {game.turnEnd.scores.length > 0 && (
@@ -125,7 +127,10 @@ const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
                   </div>
                 )}
                 <div className="mt-4 flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                  <Hourglass className="h-3 w-3" /> Next turn starting…
+                  <Hourglass className="h-3 w-3" />
+                  {game.waitingForPlayers
+                    ? 'Waiting for players to reconnect…'
+                    : 'Next turn starting…'}
                 </div>
               </div>
             </div>

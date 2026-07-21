@@ -1,5 +1,5 @@
 import React from 'react';
-import { Crown, Pencil, Check } from 'lucide-react';
+import { Crown, Pencil, Check, WifiOff } from 'lucide-react';
 import { Player } from '@/lib/protocol';
 
 interface ScoreBoardProps {
@@ -28,7 +28,9 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({ players, myId, drawerId, turnSc
               key={player.id}
               className={`flex items-center justify-between p-2 ${
                 player.id === drawerId ? 'bg-blue-50 dark:bg-blue-900/30' : ''
-              } ${player.hasGuessedCorrectly ? 'bg-green-50 dark:bg-green-900/30' : ''}`}
+              } ${player.hasGuessedCorrectly ? 'bg-green-50 dark:bg-green-900/30' : ''} ${
+                player.connected === false ? 'opacity-50' : ''
+              }`}
             >
               <div className="flex min-w-0 items-center gap-2">
                 <span className="w-5 shrink-0 text-center text-xs font-bold text-muted-foreground">
@@ -43,6 +45,11 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({ players, myId, drawerId, turnSc
                 </p>
                 {player.id === drawerId && <Pencil className="h-3.5 w-3.5 shrink-0 text-blue-500" />}
                 {player.hasGuessedCorrectly && <Check className="h-3.5 w-3.5 shrink-0 text-green-600" />}
+                {player.connected === false && (
+                  <span title="Reconnecting…">
+                    <WifiOff className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                  </span>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 {turnScores[player.id] !== undefined && (

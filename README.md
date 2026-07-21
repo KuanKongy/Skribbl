@@ -13,6 +13,7 @@ A real-time multiplayer draw-and-guess game (a [skribbl.io](https://skribbl.io) 
 - **Scoring** — guessers earn more for faster guesses; the drawer earns points per correct guesser
 - **Mid-game join** — players can join a running game as guessers and rotate into drawing
 - **Close-guess hints**, word-leak protection (the drawer can't type the word into chat)
+- **Disconnect grace** — a player whose tab closes or connection drops keeps their seat and score for 60s and can rejoin with the same username; if too few players remain connected, the game pauses at the turn boundary instead of ending
 - Host migration on disconnect, game-over podium, dark mode, responsive layout
 
 ## Architecture
@@ -54,15 +55,17 @@ lobby ──start-game──► choosing ──word picked──► drawing ─�
   └── play again ── game-over ◄── all rounds done ──── next drawer ◄── advance
 ```
 
-Every phase transition is gated on the current phase, so duplicate events or stale timers can never double-advance a turn. Each room owns exactly three timer slots (word-select timeout, per-second tick, turn-end delay) that are centrally cleared on every transition and when the room is destroyed.
+Every phase transition is gated on the current phase, so duplicate events or stale timers can never double-advance a turn. Each turn runs on a single server-side clock (a per-second tick that counts down word selection, then drawing time), plus a turn-end delay timer; both are centrally cleared on every transition and when the room is destroyed.
 
-**Turn rotation** uses a per-round set of "already drew" player ids rather than an index, so joins and leaves mid-round never skip or repeat a drawer. If the drawer disconnects, the turn ends immediately (`drawer-left`) and play continues; if the room drops below 2 players the game ends.
+**Turn rotation** uses a per-round set of "already drew" player ids rather than an index, so joins and leaves mid-round never skip or repeat a drawer. If the drawer disconnects, the turn ends immediately (`drawer-left`) and play continues.
+
+**Disconnects vs. leaves**: an explicit *Leave Room* removes the player at once, but a dropped socket (closed tab, network blip) only marks them disconnected for `RECONNECT_GRACE_MS` (60s). Rejoining with the same username within the window restores their seat, score, and turn state. While too few players are *connected*, the game pauses at the next turn boundary (`waitingForPlayers`) rather than ending; it ends only when the roster itself (including reconnectable players) drops below 2.
 
 **Scoring** — guesser: `50 + 250 × timeLeft/drawTime`; drawer: `200 × correctGuessers/(players−1)` awarded at turn end.
 
 ### How drawing sync works
 
-This is the interesting part. Instead of shipping canvas images, every client keeps an **offscreen 800×600 canvas** as the authoritative bitmap and scales it to its display size. The drawer streams *operations* in that fixed logical space:
+This is the interesting part. Instead of shipping canvas images, every client keeps an **offscreen 1000×700 canvas** as the authoritative bitmap and scales it to its display size. The drawer streams *operations* in that fixed logical space:
 
 ```ts
 type StrokeOp = { t:'s', id, tool:'brush'|'eraser', color, size, points: [x,y][] }
@@ -72,7 +75,7 @@ type FillOp   = { t:'f', id, color, x, y }
 - While drawing, points are buffered and flushed every **40ms** (~25 small messages/s, roughly 3 KB/s — versus tens of KB *per mouse event* if you send the canvas as an image).
 - Batches of the same stroke share an `id`; the server and every receiver merge them into one stroke, drawing from the stroke's last point so lines stay continuous.
 - The server keeps the op history per room (capped), which enables **replay for late joiners**, **undo** (pop the last op, everyone replays), and **clear**.
-- Flood fill is sent as a click point and executed locally by every client with the same tolerance on identical 800×600 bitmaps, so results match everywhere.
+- Flood fill is sent as a click point and executed locally by every client with the same tolerance on identical 1000×700 bitmaps, so results match everywhere.
 - The server validates every op (drawer-only, color format, coordinate bounds, size, rate limits) before relaying.
 
 ## Socket protocol
@@ -110,7 +113,7 @@ Server → client:
 | `word-hint` | room − drawer | `{ mask }` |
 | `player-guessed` | room | `{ playerId, username, gained, totalScore }` |
 | `correct-guess` | guesser | `{ word }` |
-| `turn-ended` | room | `{ word, reason: 'time'\|'all-guessed'\|'drawer-left', scores }` |
+| `turn-ended` | room | `{ word, reason: 'time'\|'all-guessed'\|'drawer-left'\|'no-guessers', scores }` |
 | `game-over` | room | `{ players }` (sorted) |
 | `new-message` | room | `{ id, playerId, username, message, type }` |
 | `error` | sender | `{ code, message }` |
@@ -126,7 +129,7 @@ Client-side types for all of these live in `src/lib/protocol.ts`.
 | `lib/canvasRenderer.ts` | Pure rendering: stroke segments, replay, tolerant flood fill |
 | `state/gameReducer.ts` | All game state in one reducer (no stale-closure bugs) |
 | `hooks/useGameSocket.ts` | Registers every listener once; drawing events go straight to the canvas |
-| `components/Canvas.tsx` | Offscreen 800×600 canvas, pointer input, stroke batching, tools |
+| `components/Canvas.tsx` | Offscreen 1000×700 canvas, pointer input, stroke batching, tools |
 | `components/GameRoom.tsx` | Game screen layout + phase overlays |
 | `components/LobbyRoom.tsx` | Entry form (join/create with settings) + waiting room |
 | `components/GameOver.tsx` | Final standings + play again |

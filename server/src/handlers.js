@@ -70,14 +70,18 @@ function registerHandlers(io) {
 
       socket.emit('room-joined', { roomId: room.id, playerId: socket.id, state: room.toState() });
       socket.to(room.id).emit('player-joined', { player: result.player });
-      room.systemMessage(`${username} joined the room.`);
+      room.systemMessage(
+        result.reconnected ? `${username} reconnected!` : `${username} joined the room.`
+      );
 
-      // Late joiner during a turn: replay the current drawing.
+      // Late joiner / reconnector during a turn: replay the current drawing.
       if (room.inGame && room.canvasOps.length > 0) {
         socket.emit('canvas-state', { ops: room.canvasOps });
       }
+      // If the game was paused waiting for players, this arrival resumes it.
+      room.maybeResume();
       room.broadcastState();
-      console.log(`${username} joined room ${room.id}`);
+      console.log(`${username} ${result.reconnected ? 'reconnected to' : 'joined'} room ${room.id}`);
     });
 
     socket.on('leave-room', () => {
@@ -164,8 +168,16 @@ function registerHandlers(io) {
       room.handleChat(socket.id, payload.message);
     });
 
+    // Unlike an explicit leave-room, a dropped socket gets a reconnect grace
+    // window during a game (GameRoom.handleDisconnect decides).
     socket.on('disconnect', () => {
-      leaveCurrentRoom(socket);
+      const roomId = socket.data.roomId;
+      if (!roomId) return;
+      socket.data.roomId = null;
+      const room = manager.get(roomId);
+      if (!room) return;
+      const { empty } = room.handleDisconnect(socket.id);
+      if (empty) manager.destroy(roomId);
     });
   });
 

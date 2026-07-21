@@ -22,16 +22,17 @@ const ConnectionStatus: React.FC = () => {
 
   if (status === 'connected') return null;
 
+  // Floating corner pill — never shifts the page layout.
   return (
     <div
-      className={`flex items-center justify-center gap-2 px-4 py-1.5 text-sm font-medium text-white ${
+      className={`fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white shadow-lg ${
         status === 'disconnected' ? 'bg-red-600' : 'bg-amber-500'
       }`}
     >
       {status === 'disconnected' ? (
         <>
           <WifiOff className="h-4 w-4" />
-          Cannot reach the server. Is it running?
+          Cannot reach the server
         </>
       ) : (
         <>

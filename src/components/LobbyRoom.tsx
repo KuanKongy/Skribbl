@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, User, Clock, Play, Moon, Sun, RotateCw } from 'lucide-react';
+import { Users, User, Clock, Play, Moon, Sun, RotateCw, Copy, Check } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import socketService from '@/services/socket';
 import { useToast } from '@/components/ui/use-toast';
@@ -23,6 +23,7 @@ const LobbyRoom: React.FC = () => {
   const [myId, setMyId] = useState<string | null>(null);
   const [hostId, setHostId] = useState<string | null>(null);
   const [settings, setSettings] = useState<GameSettings>({ rounds: 3, drawTime: 60 });
+  const [copied, setCopied] = useState(false);
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
 
@@ -98,6 +99,16 @@ const LobbyRoom: React.FC = () => {
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
+  const copyRoomCode = async () => {
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast({ title: 'Copy failed', description: `Room code: ${roomCode}` });
+    }
+  };
+
   if (waiting) {
     return (
       <div className="container mx-auto flex min-h-screen items-center justify-center p-4 dark:text-white">
@@ -109,6 +120,15 @@ const LobbyRoom: React.FC = () => {
                 <div className="rounded bg-primary-foreground px-3 py-1 text-sm dark:bg-gray-700">
                   Code: <span className="font-mono font-bold">{roomCode}</span>
                 </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={copyRoomCode}
+                  className="h-8 w-8"
+                  title="Copy room code"
+                >
+                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                </Button>
                 <Button variant="outline" size="icon" onClick={toggleTheme} className="h-8 w-8">
                   {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 </Button>
