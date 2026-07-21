@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import Canvas from './Canvas';
+import Canvas, { CanvasHandle } from './Canvas';
 import ChatBox from './ChatBox';
 import ScoreBoard from './ScoreBoard';
 import WordSelection from './WordSelection';
 import GameTimer from './GameTimer';
 import CurrentWord from './CurrentWord';
-import { ArrowLeft, Moon, Sun } from 'lucide-react';
-import socketService from '../services/socket';
-import { useToast } from '@/components/ui/use-toast';
+import GameOver from './GameOver';
+import { ArrowLeft, Moon, Sun, Pencil, Hourglass } from 'lucide-react';
+import socketService from '@/services/socket';
+import { useGameSocket } from '@/hooks/useGameSocket';
 import { useTheme } from '@/hooks/use-theme';
 
 interface GameRoomProps {
@@ -16,557 +17,139 @@ interface GameRoomProps {
   onLeaveRoom: () => void;
 }
 
-interface Player {
-  id: string;
-  username: string;
-  score: number;
-  isDrawing: boolean;
-  hasGuessedCorrectly?: boolean;
-}
-
-interface ChatMessage {
-  id: number;
-  username: string;
-  message: string;
-  type: 'normal' | 'system' | 'correct-guess' | 'emote';
-}
-
 const GameRoom: React.FC<GameRoomProps> = ({ roomCode, onLeaveRoom }) => {
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [isSelectingWord, setIsSelectingWord] = useState(false);
-  const [wordOptions, setWordOptions] = useState<string[]>([]);
-  const [currentWord, setCurrentWord] = useState<string | null>(null);
-  const [timeLeft, setTimeLeft] = useState(60);
-  const [isGameActive, setIsGameActive] = useState(false);
-  const [currentRound, setCurrentRound] = useState(1);
-  const [totalRounds, setTotalRounds] = useState(3);
-  const [showWordSelection, setShowWordSelection] = useState(false);
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 1,
-      username: 'System',
-      message: 'Welcome to the game! Guess the word or wait for your turn to draw.',
-      type: 'system',
-    }
-  ]);
-  const [isHost, setIsHost] = useState(false);
-  const { toast } = useToast();
+  const canvasRef = useRef<CanvasHandle>(null);
+  const game = useGameSocket(canvasRef);
   const { theme, setTheme } = useTheme();
 
-  useEffect(() => {
-    console.log('GameRoom mounted, connecting to socket if needed');
-    if (!socketService.isConnected()) {
-      socketService.connect();
-    }
-    
-    socketService.requestRoomState();
-  }, [roomCode]);
-  
-  useEffect(() => {
-    const checkIfHost = () => {
-      const currentId = socketService.getSocketId();
-      const roomState = socketService.getRoomState();
-      if (roomState && roomState.hostId === currentId) {
-        setIsHost(true);
-      }
-    };
-    
-    const onRoomState = (data: any) => {
-      console.log('Room state in GameRoom:', data);
-      if (data.players && Array.isArray(data.players)) {
-        setPlayers(data.players);
-      }
-      
-      setIsGameActive(!!data.gameActive);
-      
-      if (data.currentRound) setCurrentRound(data.currentRound);
-      if (data.totalRounds) setTotalRounds(data.totalRounds);
-      
-      const currentId = socketService.getSocketId();
-      
-      if (data.hostId) {
-        setIsHost(data.hostId === currentId);
-      } else if (data.players && data.players.length > 0) {
-        const isFirstPlayer = data.players[0].id === currentId;
-        setIsHost(isFirstPlayer);
-        
-        if (isFirstPlayer) {
-          socketService.assignHost(roomCode, currentId);
-        }
-      }
-      
-      if (data.players && Array.isArray(data.players) && currentId) {
-        const currentPlayer = data.players.find((p: any) => p.id === currentId);
-        if (currentPlayer && currentPlayer.isDrawing) {
-          setIsDrawing(true);
-        } else {
-          setIsDrawing(false);
-        }
-      }
-    };
-    
-    const onGameStarted = (data: any) => {
-      console.log('Game started in GameRoom:', data);
-      setIsGameActive(true);
-      setCurrentRound(data.currentRound);
-      setTotalRounds(data.totalRounds);
-      
-      if (data.players && Array.isArray(data.players)) {
-        setPlayers(data.players);
-        
-        const currentId = socketService.getSocketId();
-        const isDrawer = data.players.some((p: any) => p.id === currentId && p.isDrawing);
-        console.log("Current player is drawer:", isDrawer);
-        setIsDrawing(isDrawer);
-      }
-      
-      toast({
-        title: "Game Started",
-        description: `Round ${data.currentRound} of ${data.totalRounds}. ${data.currentDrawer} is drawing.`
-      });
-    };
-    
-    const onSelectWord = (data: any) => {
-      console.log('Select word event received:', data);
-      setWordOptions(data.words || []);
-      setShowWordSelection(true);
-      setIsSelectingWord(true);
-      
-      toast({
-        title: "Your Turn",
-        description: "Select a word to draw!"
-      });
-    };
-    
-    const onDrawingStarted = (data: any) => {
-      console.log('Drawing started:', data);
-      setShowWordSelection(false);
-      setIsSelectingWord(false);
-      
-      if (data.timeLeft) {
-        setTimeLeft(data.timeLeft);
-      }
-      
-      const currentId = socketService.getSocketId();
-      const isCurrentDrawer = data.drawer === currentId;
-      setIsDrawing(isCurrentDrawer);
-      
-      if (!isCurrentDrawer) {
-        const wordPlaceholder = '_'.repeat(data.wordLength);
-        setCurrentWord(wordPlaceholder);
-        
-        const drawerName = getPlayerNameById(data.drawer);
-        toast({
-          title: "Round Started",
-          description: `${drawerName} is drawing!`
-        });
-      }
-    };
-    
-    const onYourTurn = (data: any) => {
-      console.log('Your turn:', data);
-      setIsSelectingWord(false);
-      setShowWordSelection(false);
-      setCurrentWord(data.word);
-      toast({
-        title: "Your Turn",
-        description: `You are drawing: ${data.word}`
-      });
-    };
-    
-    const onDrawingUpdated = (data: any) => {
-      const canvas = document.querySelector('canvas');
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const img = new Image();
-          img.onload = () => {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0);
-          };
-          img.src = data.imageData;
-        }
-      }
-    };
-    
-    const onTimeUpdate = (data: any) => {
-      console.log('Time update:', data.timeLeft);
-      setTimeLeft(data.timeLeft);
-    };
-    
-    const onTurnEnded = (data: any) => {
-      toast({
-        title: "Turn Ended",
-        description: `The word was: ${data.word}`
-      });
-      setCurrentWord(data.word);
-      setIsDrawing(false);
-    };
-    
-    const onNextTurn = (data: any) => {
-      console.log('Next turn:', data);
-      setCurrentRound(data.currentRound);
-      setCurrentWord(null);
-      
-      setPlayers(prev => {
-        return prev.map(player => ({
-          ...player,
-          isDrawing: player.username === data.currentDrawer,
-          hasGuessedCorrectly: false
-        }));
-      });
-      
-      const currentId = socketService.getSocketId();
-      const currentPlayer = players.find(p => p.id === currentId);
-      const isCurrentPlayerDrawing = currentPlayer?.username === data.currentDrawer;
-      setIsDrawing(isCurrentPlayerDrawing);
-      
-      toast({
-        title: `Round ${data.currentRound} of ${data.totalRounds}`,
-        description: `${data.currentDrawer} is now drawing.`
-      });
-    };
-    
-    const onPlayerGuessed = (data: any) => {
-      toast({
-        title: "Correct Guess",
-        description: `${data.username} guessed the word!`
-      });
-      
-      setPlayers(prev => 
-        prev.map(p => 
-          p.id === data.playerId 
-            ? { ...p, score: data.score, hasGuessedCorrectly: true } 
-            : p
-        )
-      );
-    };
-    
-    const onNewMessage = (data: any) => {
-      const newMessage: ChatMessage = {
-        id: messages.length + 1,
-        username: data.username || 'Unknown',
-        message: data.message || '',
-        type: data.type || (data.isSystem ? 'system' : 'normal')
-      };
-      setMessages(prev => [...prev, newMessage]);
-    };
-    
-    const onWordHint = (data: any) => {
-      console.log('Word hint received:', data);
-      if (data.hint && !isDrawing) {
-        setCurrentWord(data.hint);
-      }
-    };
-    
-    const onPlayerJoined = (data: any) => {
-      console.log('Player joined event:', data);
-      setPlayers(prev => {
-        if (prev.some(p => p.id === data.player.id)) return prev;
-        return [...prev, data.player];
-      });
-      
-      toast({
-        title: "Player Joined",
-        description: `${data.player.username} has joined the room`
-      });
-    };
-    
-    const onPlayerLeft = (data: any) => {
-      console.log('Player left event:', data);
-      setPlayers(prev => prev.filter(p => p.id !== data.playerId));
-      
-      const wasHost = socketService.getRoomState()?.hostId === data.playerId;
-      if (wasHost) {
-        const newHostId = socketService.getRoomState()?.hostId;
-        if (newHostId === socketService.getSocketId()) {
-          setIsHost(true);
-          toast({
-            title: "You are now the host",
-            description: "The previous host left the room"
-          });
-        }
-      }
-      
-      toast({
-        title: "Player Left",
-        description: `${data.username} has left the room`
-      });
-    };
-    
-    const onHostChanged = (data: any) => {
-      const currentId = socketService.getSocketId();
-      if (data.newHostId === currentId) {
-        setIsHost(true);
-        toast({
-          title: "You are now the host",
-          description: "The previous host left the room"
-        });
-      } else {
-        const newHostName = getPlayerNameById(data.newHostId);
-        toast({
-          title: "Host Changed",
-          description: `${newHostName} is now the host`
-        });
-      }
-    };
-    
-    const onError = (data: any) => {
-      toast({
-        title: "Error",
-        description: data.message,
-        variant: "destructive"
-      });
-    };
-    
-    const onClearCanvas = () => {
-      const canvas = document.querySelector('canvas');
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-      }
-    };
-    
-    checkIfHost();
-    socketService.on('room-state', onRoomState);
-    socketService.on('game-started', onGameStarted);
-    socketService.on('select-word', onSelectWord);
-    socketService.on('drawing-started', onDrawingStarted);
-    socketService.on('your-turn', onYourTurn);
-    socketService.on('drawing-updated', onDrawingUpdated);
-    socketService.on('time-update', onTimeUpdate);
-    socketService.on('turn-ended', onTurnEnded);
-    socketService.on('next-turn', onNextTurn);
-    socketService.on('player-guessed', onPlayerGuessed);
-    socketService.on('new-message', onNewMessage);
-    socketService.on('word-hint', onWordHint);
-    socketService.on('player-joined', onPlayerJoined);
-    socketService.on('player-left', onPlayerLeft);
-    socketService.on('host-changed', onHostChanged);
-    socketService.on('error', onError);
-    socketService.on('clear-canvas', onClearCanvas);
-    
-    return () => {
-      socketService.off('room-state', onRoomState);
-      socketService.off('game-started', onGameStarted);
-      socketService.off('select-word', onSelectWord);
-      socketService.off('drawing-started', onDrawingStarted);
-      socketService.off('your-turn', onYourTurn);
-      socketService.off('drawing-updated', onDrawingUpdated);
-      socketService.off('time-update', onTimeUpdate);
-      socketService.off('turn-ended', onTurnEnded);
-      socketService.off('next-turn', onNextTurn);
-      socketService.off('player-guessed', onPlayerGuessed);
-      socketService.off('new-message', onNewMessage);
-      socketService.off('word-hint', onWordHint);
-      socketService.off('player-joined', onPlayerJoined);
-      socketService.off('player-left', onPlayerLeft);
-      socketService.off('host-changed', onHostChanged);
-      socketService.off('error', onError);
-      socketService.off('clear-canvas', onClearCanvas);
-    };
-  }, [roomCode, toast, totalRounds, messages.length, players, isDrawing]);
+  const isDrawer = game.playerId !== null && game.playerId === game.drawerId;
+  const isHost = game.playerId !== null && game.playerId === game.hostId;
+  const canDraw = isDrawer && game.phase === 'drawing';
 
-  const getPlayerNameById = useCallback((id: string) => {
-    return players.find(p => p.id === id)?.username || 'Unknown';
-  }, [players]);
+  const turnScores = Object.fromEntries((game.turnEnd?.scores ?? []).map((s) => [s.playerId, s.gained]));
 
-  const handleWordSelect = (word: string) => {
-    setCurrentWord(word);
-    setShowWordSelection(false);
-    setIsSelectingWord(false);
-    console.log(`Selected word: ${word} for room: ${roomCode}`);
-    socketService.selectWord(roomCode, word);
-  };
-
-  const startGame = () => {
-    console.log('Host starting game from GameRoom...');
-    socketService.startGame(roomCode);
-  };
-
-  const handleGuess = (guess: string) => {
-    socketService.sendChatMessage(roomCode, guess);
-  };
-
-  const handleDrawingUpdate = (imageData: string) => {
-    socketService.sendDrawingUpdate(roomCode, imageData);
-  };
-
-  const handleLeaveRoom = () => {
-    socketService.disconnect();
-    onLeaveRoom();
-  };
-
-  const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
-  };
+  if (game.phase === 'game-over' && game.finalPlayers) {
+    return (
+      <div className="container mx-auto flex h-screen flex-col p-4">
+        <GameOver
+          players={game.finalPlayers}
+          myId={game.playerId}
+          isHost={isHost}
+          onPlayAgain={() => socketService.startGame()}
+          onLeave={onLeaveRoom}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="container mx-auto p-4 flex flex-col h-screen">
-      <div className="flex justify-between items-center mb-4">
-        <Button 
-          variant="ghost" 
-          onClick={handleLeaveRoom}
-          className="flex items-center"
-        >
+    <div className="container mx-auto flex h-screen flex-col gap-3 p-3 sm:p-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button variant="ghost" onClick={onLeaveRoom} className="flex items-center">
           <ArrowLeft className="mr-1 h-4 w-4" />
-          Leave Room
+          Leave
         </Button>
-        <div>
-          <span className="font-semibold text-sm">Room: </span>
-          <span className="bg-white dark:bg-gray-800 px-2 py-1 rounded text-sm">{roomCode}</span>
+        <div className="text-sm">
+          <span className="font-semibold">Room: </span>
+          <span className="rounded bg-white px-2 py-1 font-mono dark:bg-gray-800">{game.roomId ?? roomCode}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="mr-2 text-sm">Round {currentRound}/{totalRounds}</span>
-          <GameTimer timeLeft={timeLeft} />
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={toggleTheme} 
-            className="h-8 w-8"
-          >
+        <div className="flex items-center gap-3">
+          <span className="text-sm">
+            Round {Math.max(1, game.currentRound)}/{game.totalRounds}
+          </span>
+          <GameTimer timeLeft={game.timeLeft} />
+          <Button variant="outline" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="h-8 w-8">
             {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
         </div>
       </div>
-      
-      {isGameActive ? (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 min-h-[900px] overflow-y-auto">
-            <div className="lg:col-span-3 flex flex-col gap-4">
-              <div className="flex items-center justify-center">
-                <CurrentWord 
-                  word={currentWord || ''} 
-                  isDrawing={isDrawing} 
-                  timeLeft={timeLeft}
-                  totalTime={60}
-                />
-              </div>
-              
-              <div className="flex-1 relative min-h-0">
-                <Canvas isDrawing={isDrawing} onDrawingUpdate={handleDrawingUpdate} />
-                {showWordSelection && (
-                  <WordSelection
-                    words={wordOptions}
-                    onSelect={handleWordSelect}
-                    timeLeft={timeLeft}
-                  />
-                )}
-              </div>
-            </div>
-            
-            <div className="flex flex-col gap-4 h-full">
-              <div className="lg:block flex-1" min-h-0>
-                <ScoreBoard players={players.map(p => ({
-                  id: p.id,
-                  username: p.username,
-                  avatar: '',
-                  score: p.score,
-                  isDrawing: p.isDrawing,
-                  hasGuessedCorrectly: p.hasGuessedCorrectly || false,
-                }))} />
-              </div>
-              <div className="flex-1 min-h-0">
-                <ChatBox 
-                  currentWord={isDrawing ? currentWord || undefined : undefined}
-                  onSendGuess={handleGuess}
-                  messages={messages}
-                />
+
+      {/* Word bar */}
+      <div className="flex items-center justify-center">
+        <CurrentWord
+          phase={game.phase}
+          isDrawer={isDrawer}
+          word={game.word}
+          mask={game.mask}
+          wordLength={game.wordLength}
+          drawerName={game.drawerName}
+        />
+      </div>
+
+      {/* Main area */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto lg:grid-cols-[1fr_320px] lg:overflow-hidden">
+        {/* Canvas column */}
+        <div className="relative flex min-h-[300px] flex-col lg:min-h-0">
+          <Canvas ref={canvasRef} canDraw={canDraw} />
+
+          {game.phase === 'choosing' && isDrawer && game.wordOptions.length > 0 && (
+            <WordSelection
+              words={game.wordOptions}
+              timeoutSec={game.wordSelectTimeout}
+              drawTime={game.settings.drawTime}
+              onSelect={(word) => socketService.selectWord(word)}
+            />
+          )}
+
+          {game.phase === 'choosing' && !isDrawer && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-black/30">
+              <div className="animate-fade-in flex items-center gap-2 rounded-lg bg-white px-6 py-4 shadow-lg dark:bg-gray-800">
+                <Pencil className="h-5 w-5 animate-pulse text-primary" />
+                <span className="font-medium">{game.drawerName ?? 'Someone'} is choosing a word…</span>
               </div>
             </div>
-          </div>
-        </>
-      ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="card-container max-w-md w-full animate-fade-in">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-2xl font-bold blue-gradient-text">
-                {currentRound > totalRounds ? 'Game Over' : 'Ready to Play?'}
-              </h2>
-              <Button 
-                variant="outline" 
-                size="icon" 
-                onClick={toggleTheme} 
-                className="h-8 w-8"
-              >
-                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </Button>
-            </div>
-            
-            {currentRound > totalRounds ? (
-              <div className="text-center">
-                <p className="mb-6">Final Scores:</p>
-                {players
-                  .sort((a, b) => b.score - a.score)
-                  .map((player, index) => (
-                    <p key={player.id} className="mb-1">
-                      <span className="font-bold">{index + 1}.</span> {player.username}:{' '}
-                      <span className="font-bold">{player.score}</span>
-                    </p>
-                  ))}
-                {isHost && (
-                  <Button onClick={startGame} className="mt-6">
-                    Play Again
-                  </Button>
-                )}
-                {!isHost && (
-                  <p className="mt-6 text-sm text-muted-foreground">
-                    Waiting for host to start a new game...
-                  </p>
-                )}
-              </div>
-            ) : (
-              <>
-                <p className="text-center mb-4">
-                  Get ready to draw and guess! Each player takes turns drawing while others try to
-                  guess the word.
+          )}
+
+          {game.phase === 'turn-end' && game.turnEnd && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-black/40">
+              <div className="animate-fade-in w-full max-w-sm rounded-lg bg-white p-6 text-center shadow-lg dark:bg-gray-800">
+                <p className="text-sm text-muted-foreground">
+                  {game.turnEnd.reason === 'all-guessed' && 'Everyone guessed it!'}
+                  {game.turnEnd.reason === 'time' && "Time's up!"}
+                  {game.turnEnd.reason === 'drawer-left' && 'The drawer left.'}
                 </p>
-                
-                {players.length > 0 ? (
-                  <div className="bg-muted dark:bg-gray-700 rounded-md p-3 mb-4">
-                    <h3 className="text-sm font-medium mb-2">Players ({players.length})</h3>
-                    <div className="space-y-2">
-                      {players.map((player) => (
-                        <div key={player.id} className="flex items-center justify-between bg-background rounded px-3 py-2">
-                          <div className="flex items-center">
-                            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground">
-                              {player.username.charAt(0).toUpperCase()}
-                            </div>
-                            <span className="ml-2 text-sm font-medium">
-                              {player.username}
-                              {player.id === socketService.getSocketId() && " (You)"}
-                            </span>
-                          </div>
-                          {player.id === socketService.getRoomState()?.hostId && (
-                            <span className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100 px-2 py-0.5 rounded-full">
-                              Host
-                            </span>
-                          )}
+                <p className="mt-1 text-2xl font-bold blue-gradient-text">{game.turnEnd.word}</p>
+                {game.turnEnd.scores.length > 0 && (
+                  <div className="mt-4 space-y-1 text-sm">
+                    {game.turnEnd.scores.map((s) => {
+                      const player = game.players.find((p) => p.id === s.playerId);
+                      if (!player) return null;
+                      return (
+                        <div key={s.playerId} className="flex justify-between">
+                          <span>{player.username}</span>
+                          <span className="font-semibold text-green-600 dark:text-green-400">+{s.gained}</span>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground dark:text-gray-400 text-center my-4">
-                    Waiting for players to join...
-                  </p>
                 )}
-                
-                <div className="text-center">
-                  {isHost ? (
-                    <Button onClick={startGame} className="mt-2">Start Game</Button>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Waiting for the host to start the game...</p>
-                  )}
+                <div className="mt-4 flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                  <Hourglass className="h-3 w-3" /> Next turn starting…
                 </div>
-              </>
-            )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div className="flex min-h-0 flex-col gap-3">
+          <div className="shrink-0">
+            <ScoreBoard
+              players={game.players}
+              myId={game.playerId}
+              drawerId={game.drawerId}
+              turnScores={turnScores}
+            />
+          </div>
+          <div className="min-h-[250px] flex-1 lg:min-h-0">
+            <ChatBox
+              messages={game.messages}
+              onSendGuess={(guess) => socketService.sendChatMessage(guess)}
+            />
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

@@ -1,264 +1,132 @@
-
 import { io, Socket } from 'socket.io-client';
+import { DrawOp, GameSettings, RoomState } from '@/lib/protocol';
 
-// The URL of your WebSocket server
-const SOCKET_URL = 'https://skribbl-clone-6782616a44d2.herokuapp.com/'; //https://skribbl-clone-6782616a44d2.herokuapp.com/ http://localhost:3001
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
 
-// Define a more specific callback type to match Socket.IO's expectations
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SocketCallback = (...args: any[]) => void;
 
-// Room state interface
-interface RoomState {
-  roomId: string;
-  hostId: string;
-  gameActive: boolean;
-  players: any[];
-  currentRound?: number;
-  totalRounds?: number;
-}
-
+// Thin wrapper around the socket.io client: connection lifecycle, a listener
+// registry that survives reconnects, and typed emit helpers. The server
+// derives room membership from the socket, so no emit carries a room id
+// except joinRoom.
 class SocketService {
   private socket: Socket | null = null;
   private listeners: Map<string, SocketCallback[]> = new Map();
-  private currentRoomId: string | null = null;
-  private currentPlayerId: string | null = null;
-  private roomState: RoomState | null = null;
-  private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 5;
+  private lastRoomState: RoomState | null = null;
 
-  // Connect to the WebSocket server
   connect() {
-    if (this.socket && this.socket.connected) {
-      console.log('Socket already connected');
-      return;
-    }
-
     if (this.socket) {
-      console.log('Reconnecting existing socket...');
-      this.socket.connect();
+      if (!this.socket.connected) this.socket.connect();
       return;
     }
 
-    console.log('Creating new socket connection to:', SOCKET_URL);
     this.socket = io(SOCKET_URL, {
-      reconnectionAttempts: this.maxReconnectAttempts,
-      timeout: 10000
+      reconnectionAttempts: 5,
+      timeout: 10000,
     });
-    
-    this.socket.on('connect', () => {
-      console.log('Connected to server with ID:', this.socket?.id);
-      this.currentPlayerId = this.socket?.id || null;
-      this.reconnectAttempts = 0;
-      
-      // If we have a room ID stored, automatically request room state
-      if (this.currentRoomId) {
-        console.log('Auto-requesting room state for room:', this.currentRoomId);
-        this.requestRoomState();
+
+    // Cache the latest room state so views mounting mid-stream can
+    // initialize without waiting for the next broadcast.
+    this.socket.on('room-state', (state: RoomState) => {
+      this.lastRoomState = state;
+    });
+
+    for (const [event, callbacks] of this.listeners) {
+      for (const callback of callbacks) {
+        this.socket.on(event, callback);
       }
-    });
-    
-    this.socket.on('connect_error', (err) => {
-      console.error('Connection error:', err.message);
-      this.reconnectAttempts++;
-      
-      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-        console.error('Max reconnection attempts reached');
-        this.socket?.disconnect();
-      }
-    });
-    
-    // Listen for room state updates
-    this.socket.on('room-state', (data) => {
-      console.log('Received room state update:', data);
-      this.roomState = data;
-      this.currentRoomId = data.roomId || this.currentRoomId;
-    });
-    
-    // Set up all registered event listeners
-    this.listeners.forEach((callbacks, event) => {
-      callbacks.forEach(callback => {
-        this.socket?.on(event, callback);
-      });
-    });
+    }
   }
 
-  // Disconnect from the WebSocket server
   disconnect() {
     if (!this.socket) return;
-    
     this.socket.disconnect();
     this.socket = null;
-    this.currentRoomId = null;
-    this.currentPlayerId = null;
-    this.roomState = null;
-    console.log('Disconnected from server');
+    this.lastRoomState = null;
   }
 
-  // Check if connected
   isConnected() {
     return this.socket?.connected || false;
   }
-  
-  // Get socket ID (null if not connected)
+
   getSocketId() {
-    return this.currentPlayerId || this.socket?.id || null;
+    return this.socket?.id || null;
   }
 
-  // Get current room ID
-  getCurrentRoomId() {
-    return this.currentRoomId;
-  }
-  
-  // Get current room state
-  getRoomState() {
-    return this.roomState;
-  }
-  
-  // Check if current player is host
-  isHost() {
-    return this.roomState?.hostId === this.getSocketId();
+  getLastRoomState() {
+    return this.lastRoomState;
   }
 
-  // Send an event to the server
-  emit(event: string, data: any) {
+  on(event: string, callback: SocketCallback) {
+    if (!this.listeners.has(event)) this.listeners.set(event, []);
+    this.listeners.get(event)!.push(callback);
+    this.socket?.on(event, callback);
+    return () => this.off(event, callback);
+  }
+
+  off(event: string, callback: SocketCallback) {
+    this.socket?.off(event, callback);
+    const callbacks = this.listeners.get(event);
+    if (!callbacks) return;
+    const index = callbacks.indexOf(callback);
+    if (index !== -1) callbacks.splice(index, 1);
+    if (callbacks.length === 0) this.listeners.delete(event);
+  }
+
+  private emit(event: string, data?: unknown) {
     if (!this.socket) {
-      console.error('Socket not connected. Call connect() first.');
+      console.error(`Cannot emit ${event}: socket not connected`);
       return;
     }
-    
-    console.log(`Emitting ${event}:`, data);
     this.socket.emit(event, data);
   }
 
-  // Listen for an event from the server
-  on(event: string, callback: SocketCallback) {
-    // Store the callback for reconnection
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, []);
-    }
-    this.listeners.get(event)?.push(callback);
-    
-    // If socket already exists, add the listener now
-    if (this.socket) {
-      this.socket.on(event, callback);
-    }
-    
-    // Return function to remove the listener
-    return () => {
-      this.off(event, callback);
-    };
-  }
-  
-  // Remove specific event listener
-  off(event: string, callback: SocketCallback) {
-    if (this.socket) {
-      this.socket.off(event, callback);
-    }
-    
-    // Also remove from stored listeners
-    const callbacks = this.listeners.get(event) || [];
-    const index = callbacks.indexOf(callback);
-    if (index !== -1) {
-      callbacks.splice(index, 1);
-      if (callbacks.length === 0) {
-        this.listeners.delete(event);
-      } else {
-        this.listeners.set(event, callbacks);
-      }
-    }
-  }
-  
-  // Create or join a room
-  createRoom(username: string) {
-    if (!this.socket) {
-      console.error('Socket not connected. Call connect() first.');
-      return;
-    }
-    
-    this.emit('create-room', { username });
-    
-    // Set up a one-time listener for room creation confirmation
-    this.socket.once('room-created', (data: { roomId: string, hostId: string }) => {
-      console.log('Room created with ID:', data.roomId);
-      this.currentRoomId = data.roomId;
-    });
-  }
-  
-  joinRoom(roomId: string, username: string) {
-    if (!this.socket) {
-      console.error('Socket not connected. Call connect() first.');
-      return;
-    }
-    
-    console.log(`Joining room ${roomId} as ${username}`);
-    this.emit('join-room', { roomId, username });
-    this.currentRoomId = roomId;
-  }
-  
-  // Request current room state (players, game status, etc)
-  requestRoomState() {
-    if (!this.currentRoomId) {
-      console.error('No room ID available for requesting state.');
-      return;
-    }
-    console.log('Requesting room state for room:', this.currentRoomId);
-    this.emit('request-room-state', { roomId: this.currentRoomId });
-  }
-  
-  // Start the game
-  startGame(roomId?: string) {
-    // Use provided roomId or fall back to the stored currentRoomId
-    const actualRoomId = roomId || this.currentRoomId;
-    
-    if (!actualRoomId) {
-      console.error('No room ID available. Create or join a room first.');
-      return;
-    }
-    
-    console.log('Starting game in room:', actualRoomId);
-    this.emit('start-game', { roomId: actualRoomId });
-  }
-  
-  // Select a word (when drawing)
-  selectWord(roomId: string, word: string) {
-    const actualRoomId = roomId || this.currentRoomId;
-    if (!actualRoomId) {
-      console.error('No room ID available for selecting word.');
-      return;
-    }
-    console.log('Selecting word in room:', actualRoomId, 'word:', word);
-    this.emit('word-selected', { roomId: actualRoomId, word });
-  }
-  
-  // Send a drawing update
-  sendDrawingUpdate(roomId: string, imageData: string) {
-    const actualRoomId = roomId || this.currentRoomId;
-    if (!actualRoomId) {
-      console.error('No room ID available for drawing update.');
-      return;
-    }
-    this.emit('drawing-update', { roomId: actualRoomId, imageData });
-  }
-  
-  // Send a chat message or guess
-  sendChatMessage(roomId: string, message: string) {
-    const actualRoomId = roomId || this.currentRoomId;
-    if (!actualRoomId) {
-      console.error('No room ID available for chat message.');
-      return;
-    }
-    this.emit('chat-message', { roomId: actualRoomId, message });
+  // ---- Typed emit helpers ----
+
+  createRoom(username: string, settings: GameSettings) {
+    this.emit('create-room', { username, settings });
   }
 
-  // Add this new method to the class
-  assignHost(roomId: string, playerId: string) {
-    if (this.socket) {
-      this.emit('assign-host', { roomId, playerId });
-      console.log(`Assigned host in room ${roomId} to player ${playerId}`);
-    }
+  joinRoom(roomId: string, username: string) {
+    this.emit('join-room', { roomId, username });
+  }
+
+  leaveRoom() {
+    this.lastRoomState = null;
+    this.emit('leave-room');
+  }
+
+  startGame() {
+    this.emit('start-game');
+  }
+
+  selectWord(word: string) {
+    this.emit('word-selected', { word });
+  }
+
+  sendDrawOps(ops: DrawOp[]) {
+    this.emit('draw-ops', { ops });
+  }
+
+  undo() {
+    this.emit('undo');
+  }
+
+  clearCanvas() {
+    this.emit('clear-canvas');
+  }
+
+  // Ask the server to re-deliver current state (room, canvas, word options)
+  // to this socket — used when the game screen mounts.
+  sync() {
+    this.emit('sync');
+  }
+
+  sendChatMessage(message: string) {
+    this.emit('chat-message', { message });
   }
 }
 
-// Create a singleton instance
 export const socketService = new SocketService();
 export default socketService;

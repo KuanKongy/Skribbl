@@ -1,79 +1,48 @@
-
 import React, { useState, useEffect } from 'react';
 import LobbyRoom from '../components/LobbyRoom';
 import GameRoom from '../components/GameRoom';
+import ConnectionStatus from '../components/ConnectionStatus';
 import socketService from '../services/socket';
-import { useToast } from '@/components/ui/use-toast';
 import { useTheme } from '@/hooks/use-theme';
+import { RoomState } from '@/lib/protocol';
 
 const Index = () => {
   const [roomCode, setRoomCode] = useState<string | null>(null);
-  const [gameStarted, setGameStarted] = useState(false);
-  const { toast } = useToast();
+  const [inGame, setInGame] = useState(false);
   const { theme } = useTheme();
-  
-  // Initialize socket connection once on component mount
+
+  // One shared connection for the whole app; kept alive across screens so
+  // leaving a room never churns the socket (and never changes our player id).
   useEffect(() => {
-    if (!socketService.isConnected()) {
-      socketService.connect();
-      console.log('Socket connected');
-    }
-    
-    // Clean up socket connection on unmount
-    return () => {
-      if (socketService.isConnected()) {
-        socketService.disconnect();
-        console.log('Socket disconnected on unmount');
-      }
-    };
-  }, []);
-  
-  // Listen for game start events
-  useEffect(() => {
-    const handleGameStarted = (data: any) => {
-      console.log('Game started event detected in Index:', data);
-      // Make sure we have the current room ID
-      const currentRoomId = socketService.getCurrentRoomId();
-      if (currentRoomId) {
-        console.log(`Setting room code to ${currentRoomId} and moving to game room`);
-        setRoomCode(currentRoomId);
-        setGameStarted(true);
-      }
-    };
-    
-    socketService.on('game-started', handleGameStarted);
-    
-    return () => {
-      socketService.off('game-started', handleGameStarted);
-    };
-  }, []);
-  
-  const handleStartGame = (code: string) => {
-    console.log(`Starting game with room code: ${code}`);
-    if (code) {
-      setRoomCode(code);
-      setGameStarted(true);
-    }
-  };
-  
-  const handleLeaveRoom = () => {
-    setRoomCode(null);
-    setGameStarted(false);
-    socketService.disconnect();
-    toast({
-      title: 'Left Room',
-      description: 'You have left the room',
-    });
-    // Reconnect for the lobby
     socketService.connect();
+  }, []);
+
+  // The server pushes room-state on every change — once the phase leaves
+  // 'lobby' we are in a running game (covers host start AND mid-game joins).
+  useEffect(() => {
+    return socketService.on('room-state', (state: RoomState) => {
+      setRoomCode(state.roomId);
+      if (state.phase !== 'lobby') setInGame(true);
+    });
+  }, []);
+
+  const handleLeaveRoom = () => {
+    socketService.leaveRoom();
+    setRoomCode(null);
+    setInGame(false);
   };
 
   return (
-    <div className={`min-h-screen flex flex-col bg-gradient-to-br ${theme === 'dark' ? 'from-blue-950 to-game-blue-dark' : 'from-game-blue-light to-game-blue-dark'}`}>
-      {roomCode && gameStarted ? (
+    <div
+      className={`flex min-h-screen flex-col bg-gradient-to-br ${
+        theme === 'dark' ? 'from-blue-950 to-game-blue-dark' : 'from-game-blue-light to-game-blue-dark'
+      }`}
+    >
+      <ConnectionStatus />
+      {roomCode && inGame ? (
         <GameRoom roomCode={roomCode} onLeaveRoom={handleLeaveRoom} />
       ) : (
-        <LobbyRoom onStartGame={handleStartGame} />
+        <LobbyRoom />
       )}
     </div>
   );

@@ -1,0 +1,66 @@
+name: Deploy client to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two Pages deployments at once; newest push wins.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  test-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      - run: npm test
+        working-directory: server
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Check VITE_SOCKET_URL is configured
+        env:
+          VITE_SOCKET_URL: ${{ secrets.VITE_SOCKET_URL }}
+        run: |
+          if [ -z "$VITE_SOCKET_URL" ]; then
+            echo "::error::VITE_SOCKET_URL secret is not set — the build would fall back to http://localhost:3001"
+            exit 1
+          fi
+      # npm's postbuild hook copies index.html -> 404.html (SPA fallback)
+      - run: npm run build
+        env:
+          VITE_SOCKET_URL: ${{ secrets.VITE_SOCKET_URL }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: [test-server, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

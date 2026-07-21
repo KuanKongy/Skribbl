@@ -1,72 +1,65 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import socketService from '../services/socket';
-
-interface ChatMessage {
-  id: number;
-  username: string;
-  message: string;
-  type: 'normal' | 'system' | 'correct-guess' | 'emote';
-}
+import { ChatMessage } from '@/lib/protocol';
 
 interface ChatBoxProps {
-  currentWord?: string;
-  onSendGuess: (guess: string) => void;
   messages: ChatMessage[];
+  onSendGuess: (guess: string) => void;
 }
 
-const ChatBox: React.FC<ChatBoxProps> = ({ currentWord, onSendGuess, messages }) => {
+const ChatBox: React.FC<ChatBoxProps> = ({ messages, onSendGuess }) => {
   const [message, setMessage] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim() !== '') {
-      onSendGuess(message);
+      onSendGuess(message.trim());
       setMessage('');
     }
   };
 
+  // Scroll only the message list — scrollIntoView would also drag ancestor
+  // scroll containers (the whole page on mobile).
   useEffect(() => {
-    // Scroll to bottom when new messages are added
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const list = listRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
   }, [messages]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex flex-col h-full max-h-[calc(100vh-300px)] lg:max-h-[450px]">
-      <div className="bg-primary p-2 text-white flex items-center justify-between">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg bg-white shadow-md dark:bg-gray-800">
+      <div className="bg-primary p-2 text-white">
         <h3 className="text-sm font-semibold">Chat</h3>
-        {currentWord && <span className="text-xs bg-white/20 px-2 py-0.5 rounded">Drawing: {currentWord}</span>}
       </div>
-      
-      {/* Chat messages area */}
-      <div 
-        className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[200px]" 
-      >
+
+      <div ref={listRef} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
         {messages.map((msg) => (
-          <div 
-            key={msg.id} 
-            className={`text-sm ${msg.type === 'system' ? 'text-gray-500 dark:text-gray-400 italic' : ''} ${msg.type === 'correct-guess' ? 'text-green-600 dark:text-green-400 font-semibold' : ''}`}
+          <div
+            key={msg.id}
+            className={`break-words text-sm ${
+              msg.type === 'system' ? 'italic text-gray-500 dark:text-gray-400' : ''
+            } ${msg.type === 'correct-guess' ? 'font-semibold text-green-600 dark:text-green-400' : ''}`}
           >
-            <span className="font-semibold">{msg.username}:</span> {msg.message}
+            {msg.type === 'normal' && <span className="font-semibold">{msg.username}: </span>}
+            {msg.message}
           </div>
         ))}
-        <div ref={messagesEndRef} />
       </div>
-      
-      {/* Message input area */}
-      <div className="p-2 border-t dark:border-gray-700">
+
+      <div className="border-t p-2 dark:border-gray-700">
         <form onSubmit={handleSendMessage} className="flex gap-2">
           <Input
             type="text"
-            placeholder="Type your guess..."
+            placeholder="Type your guess…"
             value={message}
+            maxLength={200}
             onChange={(e) => setMessage(e.target.value)}
-            className="flex-1 dark:bg-gray-700 dark:border-gray-600"
+            className="flex-1 dark:border-gray-600 dark:bg-gray-700"
           />
-          <Button type="submit" size="sm">Send</Button>
+          <Button type="submit" size="sm">
+            Send
+          </Button>
         </form>
       </div>
     </div>
